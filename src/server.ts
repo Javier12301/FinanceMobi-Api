@@ -4,7 +4,7 @@ import { prisma } from './core/database/prisma';
 import { redis } from './core/database/redis';
 
 async function main() {
-  await redis.connect();
+  if (redis.status === 'wait') await redis.connect();
 
   app.listen(env.PORT, () => {
     console.log(`[server] listening on port ${env.PORT} (${env.NODE_ENV})`);
