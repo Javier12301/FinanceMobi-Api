@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────
+// Enums
+// ──────────────────────────────────────────
+
+enum MovementType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum DelegationRole {
+  SUPERVISOR
+  ASESOR
+}
+
+// ──────────────────────────────────────────
+// Users & Delegation
+// ──────────────────────────────────────────
+
+model User {
+  id                          String   @id @default(uuid())
+  email                       String   @unique
+  name                        String
+  passwordHash                String?
+  googleId                    String?  @unique
+  encryptedGoogleRefreshToken String?  @db.Text
+  driveFolderId               String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  ownedWallets         Wallet[]             @relation("WalletOwner")
+  categories           Category[]
+  delegationsGiven     UserDelegation[]     @relation("DelegationOwner")
+  delegationsReceived  UserDelegation[]     @relation("DelegationDelegated")
+  transactionHistories TransactionHistory[]
+}
+
+model UserDelegation {
+  id              String         @id @default(uuid())
+  ownerId         String
+  delegatedUserId String
+  role            DelegationRole
+  active          Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  owner     User @relation("DelegationOwner", fields: [ownerId], references: [id])
+  delegated User @relation("DelegationDelegated", fields: [delegatedUserId], references: [id])
+
+  @@unique([ownerId, delegatedUserId])
+}
+
+// ──────────────────────────────────────────
+// Wallets
+// ──────────────────────────────────────────
+
+model WalletType {
+  id      Int      @id @default(autoincrement())
+  name    String   @unique
+  wallets Wallet[]
+}
+
+model Wallet {
+  id             String     @id @default(uuid())
+  ownerId        String
+  typeId         Int
+  name           String
+  description    String?
+  initialBalance Decimal    @db.Decimal(15, 2)
+  currentBalance Decimal    @db.Decimal(15, 2)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  owner             User          @relation("WalletOwner", fields: [ownerId], references: [id])
+  type              WalletType    @relation(fields: [typeId], references: [id])
+  transactions      Transaction[] @relation("SourceWallet")
+  incomingTransfers Transaction[] @relation("DestinationWallet")
+}
+
+// ──────────────────────────────────────────
+// Categories
+// ──────────────────────────────────────────
+
+model Category {
+  id           String       @id @default(uuid())
+  ownerId      String
+  movementType MovementType
+  name         String
+  createdAt    DateTime     @default(now())
+
+  owner        User          @relation(fields: [ownerId], references: [id])
+  transactions Transaction[]
+}
+
+// ──────────────────────────────────────────
+// Transactions & Audit
+// ──────────────────────────────────────────
+
+model Transaction {
+  id                  String       @id @default(uuid())
+  walletId            String
+  destinationWalletId String?
+  categoryId          String
+  amount              Decimal      @db.Decimal(15, 2)
+  description         String?
+  date                DateTime
+  movementType        MovementType
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  wallet            Wallet                  @relation("SourceWallet", fields: [walletId], references: [id])
+  destinationWallet Wallet?                 @relation("DestinationWallet", fields: [destinationWalletId], references: [id])
+  category          Category                @relation(fields: [categoryId], references: [id])
+  history           TransactionHistory[]
+  attachments       TransactionAttachment[]
+}
+
+model TransactionHistory {
+  id            String   @id @default(uuid())
+  transactionId String
+  modifiedById  String
+  action        String
+  oldSnapshot   Json?
+  newSnapshot   Json
+  createdAt     DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  modifiedBy  User        @relation(fields: [modifiedById], references: [id])
+}
+
+model TransactionAttachment {
+  id            String   @id @default(uuid())
+  transactionId String
+  googleFileId  String   @unique
+  mimeType      String
+  uploadedAt    DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+}
