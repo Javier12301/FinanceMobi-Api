@@ -1,0 +1,16 @@
+meta {
+  name: List Transactions
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/transactions?walletId={{walletId}}&categoryId={{categoryId}}&from=2026-01-01&to=2026-12-31
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}

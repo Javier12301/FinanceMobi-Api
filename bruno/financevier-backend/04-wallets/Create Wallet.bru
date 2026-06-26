@@ -1,0 +1,25 @@
+meta {
+  name: Create Wallet
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/wallets
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}
+
+body:json {
+  {
+    "name": "Cash",
+    "typeId": 1,
+    "description": "Main cash wallet",
+    "initialBalance": "1000.00"
+  }
+}

@@ -1,10 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
-import { loginWithCredentials, logout } from './auth.service';
+import { loginWithCredentials, loginWithGoogle, logout } from './auth.service';
 import { AppError } from '../../core/errors';
 
 export async function loginController(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await loginWithCredentials(req.body.email, req.body.password);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function googleLoginController(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await loginWithGoogle(req.body.idToken);
     res.json(result);
   } catch (err) {
     next(err);

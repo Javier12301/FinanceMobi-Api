@@ -7,8 +7,8 @@ const schema = z.object({
   REDIS_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
   JWT_EXPIRES_IN: z.string().default('7d'),
-  // AES-256-GCM key: 32 bytes as 64-char hex string
-  ENCRYPTION_KEY: z.string().length(64),
+  // AES-256-GCM key: 32 bytes como 64 chars hexadecimales
+  ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'ENCRYPTION_KEY debe ser exactamente 64 caracteres hexadecimales'),
   GOOGLE_CLIENT_ID: z.string().min(1),
 });
 

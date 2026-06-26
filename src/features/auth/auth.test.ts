@@ -20,6 +20,8 @@ vi.mock('../../core/database/redis', () => ({
 
 vi.mock('../../core/security/password', () => ({
   verifyPassword: vi.fn(),
+  // Hash de formato bcrypt válido para que el test de tiempo constante pueda inspeccionarlo
+  DUMMY_HASH: '$2a$12$static.dummy.hash.for.testing.purposes.only.XXXXXXXXX',
 }));
 
 import { prisma } from '../../core/database/prisma';
@@ -65,6 +67,17 @@ describe('loginWithCredentials', () => {
     });
   });
 
+  it('llama verifyPassword con un hash bcrypt válido aunque el usuario no exista', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockVerify.mockResolvedValue(false);
+
+    await loginWithCredentials('noexiste@x.com', 'cualquier').catch(() => null);
+
+    const hashUsado = mockVerify.mock.calls[0][1] as string;
+    // Un hash bcrypt real siempre comienza con $2a$ o $2b$ y tiene al menos 60 chars
+    expect(hashUsado).toMatch(/^\$2[ab]\$\d{2}\$.{53}$/);
+  });
+
   it('el mensaje de error es genérico (no revela cuál campo falló)', async () => {
     mockFindUnique.mockResolvedValue(null);
     mockVerify.mockResolvedValue(false);
@@ -86,5 +99,22 @@ describe('logout', () => {
     await logout('user-uuid-1', 'some-jti');
     expect(redis.del).toHaveBeenCalledWith('session:user-uuid-1:some-jti');
     expect(redis.del).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('issueSession — clave Redis', () => {
+  it('guarda session:{userId}:{jti} en Redis con TTL numérico', async () => {
+    const { redis } = await import('../../core/database/redis');
+    mockFindUnique.mockResolvedValue(fakeUser);
+    mockVerify.mockResolvedValue(true);
+
+    await loginWithCredentials(fakeUser.email, 'correctpass');
+
+    expect(redis.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^session:user-uuid-1:[0-9a-f-]{36}$/),
+      '1',
+      'EX',
+      expect.any(Number),
+    );
   });
 });

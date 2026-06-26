@@ -1,0 +1,23 @@
+meta {
+  name: Update Wallet
+  type: http
+  seq: 3
+}
+
+patch {
+  url: {{baseUrl}}/api/wallets/{{walletId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}
+
+body:json {
+  {
+    "name": "Cash Updated",
+    "description": "Updated wallet metadata"
+  }
+}

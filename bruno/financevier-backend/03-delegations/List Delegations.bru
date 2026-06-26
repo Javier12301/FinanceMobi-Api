@@ -1,0 +1,15 @@
+meta {
+  name: List Delegations
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/delegations
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+}

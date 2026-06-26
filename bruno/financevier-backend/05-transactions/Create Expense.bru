@@ -1,0 +1,27 @@
+meta {
+  name: Create Expense
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/transactions
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}
+
+body:json {
+  {
+    "movementType": "EXPENSE",
+    "walletId": "{{walletId}}",
+    "categoryId": "{{categoryId}}",
+    "amount": "25.00",
+    "description": "Expense sample",
+    "date": "2026-06-26T12:00:00.000Z"
+  }
+}

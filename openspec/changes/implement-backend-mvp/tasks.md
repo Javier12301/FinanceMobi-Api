@@ -27,13 +27,23 @@ Pause after this checkpoint and report in Spanish.
 - [x] 5. Implement JWT issuance with `jti`, Redis `session:{userId}:{jti}` storage, auth middleware, and single-session logout.
 - [x] 6. Implement Redis-backed rate limiting for auth endpoints and add focused auth/session tests.
 
+### Fixes post-checkpoint 2 (revisión de seguridad)
+- **[bloqueante]** Hash dummy inválido → reemplazado por `DUMMY_HASH = bcrypt.hashSync('__dummy__', 12)` precomputado al arrancar en `password.ts`. Garantiza tiempo constante real en `verifyPassword()` cuando el usuario no existe. Test agregado que verifica formato `$2a$12$...` del hash usado.
+- **[retroalimentación tests]** Agregados tests de regresión CP1/CP2 faltantes: `core.test.ts` (health, validate, errorHandler) y `auth.middleware.test.ts` (token ausente, inválido, revocado, válido, clave Redis correcta).
+
 Pause after this checkpoint and report in Spanish.
 
-## Checkpoint 3: Google SSO And Token Security
+## Checkpoint 3: Google SSO And Token Security ✅ Revisado y aprobado
 
-- [ ] 7. Implement Google `id_token` verification flow that identifies or creates users and issues system JWT sessions.
-- [ ] 8. Implement AES-256-GCM helpers for Google refresh-token encryption/decryption and ensure plaintext tokens are never logged or persisted.
-- [ ] 9. Add tests for Google login boundaries and encrypted token persistence behavior using mocks.
+- [x] 7. Implement Google `id_token` verification flow that identifies or creates users and issues system JWT sessions.
+- [x] 8. Implement AES-256-GCM helpers for Google refresh-token encryption/decryption and ensure plaintext tokens are never logged or persisted.
+- [x] 9. Add tests for Google login boundaries and encrypted token persistence behavior using mocks.
+
+### Fixes post-checkpoint 3 (revisión de seguridad)
+- **[bloqueante]** `email_verified` no validado → `googleAuth.ts` ahora rechaza payload si `email_verified !== true`. Evita matching por email con cuentas existentes usando un email Google sin confirmar. Test agregado.
+- **[bloqueante]** `google-auth-library` re-agregada como dep directa `@10.x` — TypeScript no resuelve tipos de deps transitivas aunque estén en `node_modules`.
+- **[medio]** `ENCRYPTION_KEY` solo validaba longitud → cambiado a `.regex(/^[0-9a-fA-F]{64}$/)`. Clave no-hex ahora falla en startup, no en tiempo de cifrado.
+- Mock de `password` en `auth.test.ts` actualizado para exportar `DUMMY_HASH` con formato bcrypt válido.
 
 Pause after this checkpoint and report in Spanish.
 

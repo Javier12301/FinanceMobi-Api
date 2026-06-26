@@ -1,0 +1,27 @@
+meta {
+  name: Create Income
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/transactions
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}
+
+body:json {
+  {
+    "movementType": "INCOME",
+    "walletId": "{{walletId}}",
+    "categoryId": "{{categoryId}}",
+    "amount": "100.00",
+    "description": "Income sample",
+    "date": "2026-06-26T12:00:00.000Z"
+  }
+}

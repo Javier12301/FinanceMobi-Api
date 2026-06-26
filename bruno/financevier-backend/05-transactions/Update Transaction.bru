@@ -1,0 +1,23 @@
+meta {
+  name: Update Transaction
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/api/transactions/{{transactionId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}
+
+body:json {
+  {
+    "amount": "30.00",
+    "description": "Updated transaction sample"
+  }
+}

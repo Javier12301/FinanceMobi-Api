@@ -1,0 +1,16 @@
+meta {
+  name: Delete Wallet
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/api/wallets/{{walletId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}

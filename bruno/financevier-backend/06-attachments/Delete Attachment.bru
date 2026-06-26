@@ -1,0 +1,16 @@
+meta {
+  name: Delete Attachment
+  type: http
+  seq: 3
+}
+
+delete {
+  url: {{baseUrl}}/api/attachments/{{attachmentId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}

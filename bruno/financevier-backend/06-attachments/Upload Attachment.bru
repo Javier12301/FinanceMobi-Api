@@ -1,0 +1,20 @@
+meta {
+  name: Upload Attachment
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/attachments/{{transactionId}}
+  body: multipartForm
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}
+
+body:multipart-form {
+  file: @/absolute/path/to/receipt.pdf
+}

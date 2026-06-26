@@ -1,0 +1,28 @@
+meta {
+  name: Create Transfer
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/api/transactions
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Context-Id: {{ownerContextId}}
+}
+
+body:json {
+  {
+    "movementType": "TRANSFER",
+    "walletId": "{{walletId}}",
+    "destinationWalletId": "{{destinationWalletId}}",
+    "categoryId": "{{categoryId}}",
+    "amount": "50.00",
+    "description": "Transfer sample",
+    "date": "2026-06-26T12:00:00.000Z"
+  }
+}

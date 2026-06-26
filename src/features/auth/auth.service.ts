@@ -1,7 +1,8 @@
 import { prisma } from '../../core/database/prisma';
 import { redis } from '../../core/database/redis';
-import { verifyPassword } from '../../core/security/password';
+import { verifyPassword, DUMMY_HASH } from '../../core/security/password';
 import { signToken, tokenTtlSeconds } from '../../core/security/jwt';
+import { verifyGoogleIdToken } from '../../core/security/googleAuth';
 import { AppError } from '../../core/errors';
 
 const GENERIC_LOGIN_ERROR = 'Credenciales incorrectas';
@@ -9,8 +10,8 @@ const GENERIC_LOGIN_ERROR = 'Credenciales incorrectas';
 export async function loginWithCredentials(email: string, password: string) {
   const user = await prisma.user.findUnique({ where: { email } });
 
-  // Tiempo constante: siempre verificamos aunque no exista el usuario
-  const hashToCheck = user?.passwordHash ?? '$2a$12$invalidhashpadding000000000000000000000000000000000000000';
+  // Tiempo constante: siempre verificamos contra un hash bcrypt real aunque el usuario no exista
+  const hashToCheck = user?.passwordHash ?? DUMMY_HASH;
   const valid = await verifyPassword(password, hashToCheck);
 
   if (!user || !valid) throw new AppError(401, GENERIC_LOGIN_ERROR);
@@ -32,4 +33,22 @@ export async function issueSession(userId: string, email: string) {
 
 export async function logout(userId: string, jti: string) {
   await redis.del(`session:${userId}:${jti}`);
+}
+
+export async function loginWithGoogle(idToken: string) {
+  // verifyGoogleIdToken lanza AppError(401) si el token es inválido
+  const { sub: googleId, email } = await verifyGoogleIdToken(idToken);
+
+  let user = await prisma.user.findFirst({
+    where: { OR: [{ googleId }, { email }] },
+  });
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: { googleId, email, name: email.split('@')[0] },
+    });
+  }
+
+  // El id_token de Google se descarta aquí — nunca se persiste
+  return issueSession(user.id, user.email);
 }
