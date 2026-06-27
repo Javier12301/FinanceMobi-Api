@@ -37,7 +37,7 @@ export async function updateTransactionHandler(req: Request, res: Response, next
 
 export async function deleteTransactionHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    await deleteTransaction(req.params.transactionId, req.ownerContext!);
+    await deleteTransaction(req.params.transactionId, req.ownerContext!, req.user!.sub);
     res.status(204).send();
   } catch (error) {
     next(error);

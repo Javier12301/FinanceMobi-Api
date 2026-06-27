@@ -12,8 +12,15 @@ export async function connectDriveHandler(req: Request, res: Response, next: Nex
   }
 }
 
-export async function uploadAttachmentHandler(_req: Request, _res: Response, next: NextFunction) {
-  next(new AppError(501, 'Los límites de tipo y tamaño de archivo no están aprobados. La funcionalidad de subida no está disponible aún.'));
+export async function uploadAttachmentHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { transactionId } = req.params;
+    const files = (req.files as any[]) || [];
+    const attachments = await uploadAttachment(transactionId, req.ownerContext!.ownerId, files);
+    res.status(201).json(attachments);
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function listAttachmentsHandler(req: Request, res: Response, next: NextFunction) {
@@ -28,8 +35,8 @@ export async function listAttachmentsHandler(req: Request, res: Response, next: 
 
 export async function deleteAttachmentHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const { attachmentId } = req.params;
-    await deleteAttachment(attachmentId);
+    const { transactionId, attachmentId } = req.params;
+    await deleteAttachment(attachmentId, transactionId, req.ownerContext!.ownerId);
     res.status(204).send();
   } catch (err) {
     next(err);

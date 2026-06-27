@@ -542,16 +542,30 @@ Conecta Google Drive del usuario cifrando y persistiendo el refresh token. Crea 
 
 #### `POST /api/transactions/:transactionId/attachments`
 
-> **⚠️ No disponible — Stub 501**
+**Headers:** `Authorization`, `X-Owner-Id`. Roles permitidos: `OWNER`, `SUPERVISOR`.
 
-La política de MIME types y límite de tamaño no está aprobada.
+**Body:** `multipart/form-data`, campo `file`. Máximo 3 archivos por request. Máximo 5 MB por archivo.
 
-**Respuesta 501:**
+**MIME permitidos:** `image/jpeg`, `image/png`, `image/webp`, `application/pdf`.
+
+**Respuesta 201** — array de adjuntos creados:
 ```json
-{
-  "error": "Los límites de tipo y tamaño de archivo no están aprobados. La funcionalidad de subida no está disponible aún."
-}
+[
+  {
+    "id": "uuid",
+    "transactionId": "uuid",
+    "googleFileId": "1BxiMVs...",
+    "mimeType": "image/jpeg",
+    "uploadedAt": "2026-06-27T10:00:00.000Z"
+  }
+]
 ```
+
+**Errores:**
+- `400` — MIME no permitido, más de 3 archivos, archivo > 5 MB
+- `403` — No autorizado
+- `404` — Transacción no encontrada
+- `409` — Google Drive no conectado
 
 ---
 
@@ -582,16 +596,15 @@ Lista los adjuntos de una transacción. Accesible para todos los roles.
 
 #### `DELETE /api/transactions/:transactionId/attachments/:attachmentId`
 
-> **⚠️ No disponible — Stub 501**
+**Headers:** `Authorization`, `X-Owner-Id`. Roles permitidos: `OWNER`, `SUPERVISOR`.
 
-La política de eliminación de adjuntos está pendiente.
+Elimina el archivo de Google Drive primero; si Drive falla, retorna error y la DB queda sin cambios.
 
-**Respuesta 501:**
-```json
-{
-  "error": "La política de eliminación de adjuntos no está resuelta."
-}
-```
+**Respuesta 204** — sin cuerpo.
+
+**Errores:**
+- `403` — No autorizado (ownership incorrecto)
+- `404` — Adjunto no encontrado o no pertenece a la transacción
 
 ---
 
@@ -719,11 +732,11 @@ const email = payload.email
 | `POST /api/transactions`                              | ✅ Disponible |
 | `GET /api/transactions`                               | ✅ Disponible |
 | `PUT /api/transactions/:transactionId`                | ✅ Disponible |
-| `DELETE /api/transactions/:transactionId`             | ⛔ Stub 501   |
+| `DELETE /api/transactions/:transactionId`             | ✅ Disponible |
 | `POST /api/drive/connect`                             | ✅ Disponible |
-| `POST /api/transactions/:id/attachments`              | ⛔ Stub 501   |
+| `POST /api/transactions/:id/attachments`              | ✅ Disponible |
 | `GET /api/transactions/:id/attachments`               | ✅ Disponible |
-| `DELETE /api/transactions/:id/attachments/:attachmentId` | ⛔ Stub 501 |
+| `DELETE /api/transactions/:id/attachments/:attachmentId` | ✅ Disponible |
 
 ---
 

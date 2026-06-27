@@ -1,9 +1,15 @@
 import { NextFunction, Request, Response } from 'express';
+import multer from 'multer';
 import { AppError } from '../errors';
 
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof AppError) {
     res.status(err.statusCode).json({ error: err.message });
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    res.status(400).json({ error: err.message });
     return;
   }
 

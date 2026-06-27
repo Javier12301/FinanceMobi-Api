@@ -29,6 +29,98 @@ npm run db:studio     # Prisma Studio
 
 ---
 
+## Deploy en maquina propia para red interna
+
+Este modo sirve para probar la API desde otros dispositivos conectados a la misma red local, por ejemplo un celular o notebook familiar. No expone la app a internet.
+
+### 1. Obtener la IP local de la maquina
+
+En Windows:
+
+```powershell
+ipconfig
+```
+
+Buscar la `Direccion IPv4` del adaptador Wi-Fi o Ethernet. Ejemplo:
+
+```text
+192.168.0.249
+```
+
+### 2. Configurar variables de entorno
+
+Para desarrollo normal, dejar `.env` cerrado a localhost:
+
+```env
+PORT=3000
+ALLOWED_ORIGINS=http://localhost:5173
+```
+
+El comando `npm run dev:lan` habilita CORS para origenes privados de red local en el puerto `5173`, por ejemplo `http://192.168.0.249:5173`, sin tener que cambiar el `.env` cada vez que cambia la IP.
+
+### 3. Levantar base de datos y Redis
+
+```bash
+docker compose up -d
+npm run db:migrate
+```
+
+Opcionalmente, cargar datos iniciales:
+
+```bash
+npm run db:seed
+```
+
+### 4. Levantar en modo local
+
+```bash
+npm run dev
+```
+
+Este modo escucha solo en la propia maquina:
+
+```text
+http://localhost:3000/api
+```
+
+### 5. Levantar en modo red interna
+
+Backend:
+
+```bash
+npm run dev:lan
+```
+
+Frontend, desde el repo frontend:
+
+```bash
+npm run dev:lan
+```
+
+Abrir desde el celular o desde otro equipo de la misma red:
+
+```text
+http://192.168.0.249:5173
+```
+
+En modo LAN, el frontend calcula la API usando el mismo host con puerto `3000`, por ejemplo:
+
+```text
+http://192.168.0.249:3000/api
+```
+
+Para verificar:
+
+```bash
+curl http://192.168.0.249:3000/api/health
+```
+
+### 6. Firewall
+
+Si Windows pide permiso para Node.js, permitir acceso en redes privadas. Si no aparece el aviso y otro dispositivo no puede conectarse, habilitar el puerto `3000` en el firewall para red privada.
+
+---
+
 ## Deploy en VPS
 
 El stack completo corre con Docker Compose. Nginx actúa como proxy reverso y sirve el frontend estático.

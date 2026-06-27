@@ -114,6 +114,7 @@ model Transaction {
   description         String?
   date                DateTime
   movementType        MovementType
+  deletedAt           DateTime?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 

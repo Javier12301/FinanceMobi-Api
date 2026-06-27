@@ -19,7 +19,14 @@ body:multipart-form {
   file: @file(C:\Users\Javi\Downloads\1000219384.jpg)
 }
 
+script:post-response {
+  if (res.body && res.body[0] && res.body[0].id) {
+    bru.setVar("attachmentId", res.body[0].id);
+  }
+}
+
 docs {
-  NOTA: Este endpoint devuelve 501 — política de MIME/tamaño pendiente de aprobación.
-  Respuesta esperada: { "error": "Los límites de tipo y tamaño de archivo no están aprobados..." }
+  Campo: file (multipart). Máx 3 archivos, máx 5 MB/archivo.
+  MIME permitidos: image/jpeg, image/png, image/webp, application/pdf.
+  Requiere Drive conectado. Devuelve array de attachments creados.
 }

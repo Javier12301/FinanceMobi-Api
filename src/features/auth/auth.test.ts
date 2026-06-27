@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { loginWithCredentials, logout } from './auth.service';
+import { loginWithCredentials, logout, registerWithCredentials, getProfile } from './auth.service';
 import { AppError } from '../../core/errors';
 
 // Mocks de módulos externos — la lógica de negocio se prueba aislada
@@ -7,7 +7,13 @@ vi.mock('../../core/database/prisma', () => ({
   prisma: {
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
     },
+    category: {
+      createMany: vi.fn(),
+    },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -20,12 +26,13 @@ vi.mock('../../core/database/redis', () => ({
 
 vi.mock('../../core/security/password', () => ({
   verifyPassword: vi.fn(),
+  hashPassword: vi.fn(),
   // Hash de formato bcrypt válido para que el test de tiempo constante pueda inspeccionarlo
   DUMMY_HASH: '$2a$12$static.dummy.hash.for.testing.purposes.only.XXXXXXXXX',
 }));
 
 import { prisma } from '../../core/database/prisma';
-import { verifyPassword } from '../../core/security/password';
+import { verifyPassword, hashPassword } from '../../core/security/password';
 
 const mockFindUnique = prisma.user.findUnique as ReturnType<typeof vi.fn>;
 const mockVerify = verifyPassword as ReturnType<typeof vi.fn>;
@@ -116,5 +123,123 @@ describe('issueSession — clave Redis', () => {
       'EX',
       expect.any(Number),
     );
+  });
+});
+
+describe('registerWithCredentials', () => {
+  const mockFindFirst = prisma.user.findFirst as ReturnType<typeof vi.fn>;
+  const mockHashPassword = hashPassword as ReturnType<typeof vi.fn>;
+  const mockTransaction = prisma.$transaction as ReturnType<typeof vi.fn>;
+
+  it('retorna token cuando el registro es válido', async () => {
+    const newUser = { id: 'new-user-id', email: 'new@test.com', name: 'Test User', passwordHash: 'hashed' };
+    mockFindFirst.mockResolvedValue(null);
+    mockHashPassword.mockResolvedValue('hashedpass');
+    mockTransaction.mockImplementation(async (fn: Function) => {
+      const mockTx = {
+        user: { create: vi.fn().mockResolvedValue(newUser) },
+        category: { createMany: vi.fn().mockResolvedValue({ count: 6 }) },
+      };
+      return fn(mockTx);
+    });
+
+    const result = await registerWithCredentials('Test User', 'new@test.com', 'password123');
+
+    expect(result).toHaveProperty('token');
+    expect(typeof result.token).toBe('string');
+  });
+
+  it('lanza AppError 409 cuando el email ya existe', async () => {
+    mockFindFirst.mockResolvedValue({ id: 'existing-id', email: 'existing@test.com' });
+
+    await expect(registerWithCredentials('Test', 'existing@test.com', 'pass')).rejects.toMatchObject({
+      statusCode: 409,
+    });
+  });
+
+  it('hashea la contraseña antes de crear el usuario', async () => {
+    mockFindFirst.mockResolvedValue(null);
+    mockHashPassword.mockResolvedValue('hashedpass');
+    mockTransaction.mockImplementation(async (fn: Function) => {
+      const mockTx = {
+        user: { create: vi.fn().mockResolvedValue({ id: 'new-id', email: 'test@test.com', name: 'Test', passwordHash: 'hashedpass' }) },
+        category: { createMany: vi.fn().mockResolvedValue({ count: 6 }) },
+      };
+      return fn(mockTx);
+    });
+
+    await registerWithCredentials('Test', 'test@test.com', 'mypass123');
+
+    expect(mockHashPassword).toHaveBeenCalledWith('mypass123');
+  });
+
+  it('crea la sesión en Redis después del registro', async () => {
+    const { redis } = await import('../../core/database/redis');
+    mockFindFirst.mockResolvedValue(null);
+    mockHashPassword.mockResolvedValue('hashedpass');
+    mockTransaction.mockImplementation(async (fn: Function) => {
+      const mockTx = {
+        user: { create: vi.fn().mockResolvedValue({ id: 'new-id', email: 'new@test.com', name: 'Test', passwordHash: 'hashedpass' }) },
+        category: { createMany: vi.fn().mockResolvedValue({ count: 6 }) },
+      };
+      return fn(mockTx);
+    });
+
+    await registerWithCredentials('Test', 'new@test.com', 'pass');
+
+    expect(redis.set).toHaveBeenCalledWith(
+      expect.stringMatching(/^session:new-id:[0-9a-f-]{36}$/),
+      '1',
+      'EX',
+      expect.any(Number),
+    );
+  });
+});
+
+describe('getProfile', () => {
+  const mockFindUniqueProfile = prisma.user.findUnique as ReturnType<typeof vi.fn>;
+
+  it('driveConnected = false cuando no hay token ni folderId', async () => {
+    mockFindUniqueProfile.mockResolvedValue({
+      id: 'user-id', name: 'John Doe', email: 'john@example.com',
+      encryptedGoogleRefreshToken: null, driveFolderId: null,
+    });
+    const result = await getProfile('user-id');
+    expect(result.driveConnected).toBe(false);
+  });
+
+  it('driveConnected = false cuando solo hay token (sin folderId)', async () => {
+    mockFindUniqueProfile.mockResolvedValue({
+      id: 'user-id', name: 'John Doe', email: 'john@example.com',
+      encryptedGoogleRefreshToken: 'encrypted-token', driveFolderId: null,
+    });
+    const result = await getProfile('user-id');
+    expect(result.driveConnected).toBe(false);
+  });
+
+  it('driveConnected = false cuando solo hay folderId (sin token)', async () => {
+    mockFindUniqueProfile.mockResolvedValue({
+      id: 'user-id', name: 'John Doe', email: 'john@example.com',
+      encryptedGoogleRefreshToken: null, driveFolderId: 'folder-id',
+    });
+    const result = await getProfile('user-id');
+    expect(result.driveConnected).toBe(false);
+  });
+
+  it('driveConnected = true cuando existen token y folderId', async () => {
+    mockFindUniqueProfile.mockResolvedValue({
+      id: 'user-id', name: 'Jane Doe', email: 'jane@example.com',
+      encryptedGoogleRefreshToken: 'encrypted-token', driveFolderId: 'folder-id',
+    });
+    const result = await getProfile('user-id');
+    expect(result.driveConnected).toBe(true);
+  });
+
+  it('lanza AppError 404 cuando el usuario no existe', async () => {
+    mockFindUniqueProfile.mockResolvedValue(null);
+
+    await expect(getProfile('nonexistent-id')).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 });

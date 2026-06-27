@@ -1,6 +1,6 @@
 import { prisma } from '../../core/database/prisma';
 import { redis } from '../../core/database/redis';
-import { verifyPassword, DUMMY_HASH } from '../../core/security/password';
+import { verifyPassword, hashPassword, DUMMY_HASH } from '../../core/security/password';
 import { signToken, tokenTtlSeconds } from '../../core/security/jwt';
 import { verifyGoogleIdToken } from '../../core/security/googleAuth';
 import { AppError } from '../../core/errors';
@@ -51,4 +51,57 @@ export async function loginWithGoogle(idToken: string) {
 
   // El id_token de Google se descarta aquí — nunca se persiste
   return issueSession(user.id, user.email);
+}
+
+const DEFAULT_CATEGORIES = [
+  { movementType: 'EXPENSE', name: 'Comida' },
+  { movementType: 'EXPENSE', name: 'Transporte' },
+  { movementType: 'EXPENSE', name: 'Servicios' },
+  { movementType: 'EXPENSE', name: 'Ocio' },
+  { movementType: 'INCOME', name: 'Sueldo' },
+  { movementType: 'TRANSFER', name: 'Transferencia' },
+] as const;
+
+export async function registerWithCredentials(name: string, email: string, password: string) {
+  // Pre-check para 409 rápido; el catch P2002 cubre la race condition
+  const existingUser = await prisma.user.findFirst({ where: { email } });
+  if (existingUser) throw new AppError(409, 'Email ya registrado');
+
+  const passwordHash = await hashPassword(password);
+
+  try {
+    const user = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: { name, email, passwordHash },
+      });
+
+      await tx.category.createMany({
+        data: DEFAULT_CATEGORIES.map((cat) => ({
+          ownerId: newUser.id,
+          movementType: cat.movementType,
+          name: cat.name,
+        })),
+      });
+
+      return newUser;
+    });
+
+    return issueSession(user.id, user.email);
+  } catch (err: any) {
+    // ponytail: P2002 cubre race condition entre pre-check y create
+    if (err?.code === 'P2002') throw new AppError(409, 'Email ya registrado');
+    throw err;
+  }
+}
+
+export async function getProfile(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError(404, 'Usuario no encontrado');
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    driveConnected: !!user.encryptedGoogleRefreshToken && !!user.driveFolderId,
+  };
 }
