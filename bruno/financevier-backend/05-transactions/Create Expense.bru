@@ -25,3 +25,9 @@ body:json {
     "date": "2026-06-26T12:00:00.000Z"
   }
 }
+
+script:post-response {
+  if (res.body && res.body.id) {
+    bru.setVar("transactionId", res.body.id);
+  }
+}

@@ -4,10 +4,13 @@ import pinoHttp from 'pino-http';
 import { env } from './core/config/env';
 import { errorHandler } from './core/middlewares/errorHandler';
 import authRoutes from './features/auth/auth.routes';
+import { meController } from './features/auth/auth.controller';
+import { authMiddleware } from './core/middlewares/auth';
 import walletsRouter from './features/wallets/wallets.routes';
 import categoriesRouter from './features/wallets/categories.routes';
 import transactionsRouter from './features/transactions/transactions.routes';
 import attachmentsRouter from './features/attachments/attachments.routes';
+import delegationsRouter from './features/delegations/delegation.routes';
 
 export const app = express();
 
@@ -47,6 +50,8 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.get('/api/me', authMiddleware, meController);
+app.use('/api/delegations', delegationsRouter);
 app.use('/api/wallets', walletsRouter);
 app.use('/api', categoriesRouter);
 app.use('/api/transactions', transactionsRouter);

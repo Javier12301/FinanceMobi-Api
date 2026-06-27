@@ -1,5 +1,6 @@
 import { prisma } from '../../core/database/prisma';
 import { AppError } from '../../core/errors';
+import { getDriveClient } from '../../core/security/driveClient';
 import type { CreateTransactionInput, UpdateTransactionInput, ListTransactionFiltersInput } from './transactions.schema';
 
 interface OwnerContext {
@@ -92,6 +93,7 @@ export async function listTransactions(ownerId: string, filters?: ListTransactio
 
   const where: any = {
     walletId: { in: filters?.walletId ? [filters.walletId] : walletIds },
+    deletedAt: null,
   };
   if (filters?.categoryId) {
     where.categoryId = filters.categoryId;
@@ -112,10 +114,8 @@ export async function updateTransaction(
   ownerContext: OwnerContext,
 ) {
   return prisma.$transaction(async (tx) => {
-    const oldTx = await tx.transaction.findUnique({ where: { id: transactionId } });
-    if (!oldTx) {
-      throw new AppError(404, 'Transacción no encontrada');
-    }
+    const oldTx = await tx.transaction.findFirst({ where: { id: transactionId, deletedAt: null } });
+    if (!oldTx) throw new AppError(404, 'Transacción no encontrada');
 
     const wallet = await tx.wallet.findUnique({ where: { id: oldTx.walletId } });
     if (!wallet || wallet.ownerId !== ownerContext.ownerId) {
@@ -181,9 +181,62 @@ export async function updateTransaction(
   });
 }
 
-export async function deleteTransaction(transactionId: string, ownerContext: OwnerContext) {
-  throw new AppError(
-    501,
-    'La política de eliminación de transacciones no está resuelta. Contacta al administrador.',
-  );
+export async function deleteTransaction(
+  transactionId: string,
+  ownerContext: OwnerContext,
+  userId: string,
+) {
+  const transaction = await prisma.transaction.findFirst({
+    where: { id: transactionId, deletedAt: null },
+    include: { wallet: true, attachments: true, destinationWallet: true },
+  });
+  if (!transaction) throw new AppError(404, 'Transacción no encontrada');
+
+  if (transaction.wallet.ownerId !== ownerContext.ownerId) {
+    throw new AppError(403, 'No autorizado');
+  }
+
+  // Drive primero: si hay attachments, Drive es obligatorio
+  if (transaction.attachments.length > 0) {
+    const user = await prisma.user.findUnique({ where: { id: ownerContext.ownerId } });
+    if (!user?.encryptedGoogleRefreshToken) {
+      throw new AppError(409, 'Google Drive no conectado — no se pueden borrar los adjuntos');
+    }
+    const drive = getDriveClient(user.encryptedGoogleRefreshToken);
+    for (const att of transaction.attachments) {
+      await drive.files.delete({ fileId: att.googleFileId });
+    }
+  }
+
+  // ponytail: soft delete — FK ON DELETE RESTRICT en TransactionHistory impide hard delete
+  await prisma.$transaction(async (tx) => {
+    await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${transaction.walletId} FOR UPDATE`;
+    if (transaction.destinationWalletId) {
+      await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${transaction.destinationWalletId} FOR UPDATE`;
+    }
+
+    const amount = Number(transaction.amount);
+    const wallet = await tx.wallet.findUnique({ where: { id: transaction.walletId } });
+    if (!wallet) throw new AppError(500, 'Billetera no encontrada');
+
+    if (transaction.movementType === 'INCOME') {
+      await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) - amount } });
+    } else if (transaction.movementType === 'EXPENSE') {
+      await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) + amount } });
+    } else if (transaction.movementType === 'TRANSFER' && transaction.destinationWalletId) {
+      const destWallet = await tx.wallet.findUnique({ where: { id: transaction.destinationWalletId } });
+      if (!destWallet) throw new AppError(500, 'Billetera destino no encontrada');
+      await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) + amount } });
+      await tx.wallet.update({ where: { id: transaction.destinationWalletId }, data: { currentBalance: Number(destWallet.currentBalance) - amount } });
+    }
+
+    await tx.transactionHistory.create({
+      data: { transactionId: transaction.id, modifiedById: userId, action: 'DELETE', oldSnapshot: transaction as any, newSnapshot: {} as any },
+    });
+
+    // Attachments: hard delete (no FK apunta desde otro lado)
+    await tx.transactionAttachment.deleteMany({ where: { transactionId } });
+    // Transaction: soft delete para preservar historial de auditoría
+    await tx.transaction.update({ where: { id: transactionId }, data: { deletedAt: new Date() } });
+  });
 }

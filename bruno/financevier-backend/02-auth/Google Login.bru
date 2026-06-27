@@ -10,14 +10,22 @@ post {
   auth: none
 }
 
+headers {
+  X-Owner-Id: {{ownerContextId}}
+}
+
 body:json {
   {
-    "idToken": "paste-google-id-token-here"
+    "idToken": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImQxMjk3OGJhNGMyOWVmMTE1NGEzNGU0ODcwYzdhM2E1MWQyNmRmMTAiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiIxNzE4NjYzNTg1NjEtMmZnNmU3bXFmYnY1dmU3azRrZDRmM3U1MDQ2NjhlODEuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiIxNzE4NjYzNTg1NjEtMmZnNmU3bXFmYnY1dmU3azRrZDRmM3U1MDQ2NjhlODEuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMDczMTI2NTMzNjE4NjcwODA0NzYiLCJlbWFpbCI6ImphdmllcnJhbWlyZXoxMjMwMTIzQGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoiWEtza2NKYlYtUlJiNE1IOXI3OWphUSIsIm5hbWUiOiJKYXZpZXIgUmFtaXJleiIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS9BQ2c4b2NJXzFVUkgwOWlsa2FYekM4NVJHTWh0ZFEwcEo0dzZjc2M4UlVmZHZvTUNtcmVWVHZIcj1zOTYtYyIsImdpdmVuX25hbWUiOiJKYXZpZXIiLCJmYW1pbHlfbmFtZSI6IlJhbWlyZXoiLCJpYXQiOjE3ODI1NzYyODIsImV4cCI6MTc4MjU3OTg4Mn0.VfpiKM8W2N0bGjFz6hKzrHIwyjv9Hniwx6lrcDFqIZrli5nJfmyUi1B5bgVTj4xbJkWdlh-S4tS9VooV7v4xovPfqhPMtBe8Bzr7aeV7S8JzePDmeixvwk3C1yGXYY-wK24sqYNjRNJytzQ9Bf4wXfiKc7kteWGZsAYrK012v9R5MeNZ5jZ09Sz_wqfCYIUbYg_-7LESqsw0pdtm3U130SB4SWtHAXVtoqHRDrEaqqmo5aWH9xFk7n6on_9g6LSCU7XlqF28l6B3za9HVLhX6zLLYvvHTk5n0jmOIMBCrxkHIYc1icEKkudHSH5uHUtaFELIYDnu2-n_FyKBIs_Hng"
   }
 }
 
 script:post-response {
   if (res.body && res.body.token) {
     bru.setVar("token", res.body.token);
+    // Decodifica sub del JWT para usar como X-Owner-Id
+    const parts = res.body.token.split('.');
+    const payload = JSON.parse(atob(parts[1]));
+    bru.setVar("ownerContextId", payload.sub);
   }
 }

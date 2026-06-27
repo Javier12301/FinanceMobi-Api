@@ -14,3 +14,11 @@ headers {
   Authorization: Bearer {{token}}
   X-Owner-Id: {{ownerContextId}}
 }
+
+docs {
+  Soft delete: la transacción queda con deletedAt y no aparece en listados.
+  Si tiene adjuntos, borra los archivos de Drive primero. Si Drive falla → 500, DB intacta.
+  Revierte el balance de la wallet (y la destino si es TRANSFER).
+  Respuesta exitosa: 204 sin cuerpo.
+  Idempotente en errores: segundo DELETE retorna 404, no toca balances.
+}
