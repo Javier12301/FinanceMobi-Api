@@ -5,12 +5,17 @@ meta {
 }
 
 delete {
-  url: {{baseUrl}}/api/attachments/{{attachmentId}}
+  url: {{baseUrl}}/api/transactions/{{transactionId}}/attachments/{{attachmentId}}
   body: none
   auth: none
 }
 
 headers {
   Authorization: Bearer {{token}}
-  X-Owner-Context-Id: {{ownerContextId}}
+  X-Owner-Id: {{ownerContextId}}
+}
+
+docs {
+  NOTA: Este endpoint devuelve 501 — política de eliminación pendiente de aprobación.
+  Respuesta esperada: { "error": "La política de eliminación de adjuntos no está resuelta." }
 }

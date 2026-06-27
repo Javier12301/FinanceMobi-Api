@@ -5,12 +5,12 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/api/attachments/{{transactionId}}
+  url: {{baseUrl}}/api/transactions/{{transactionId}}/attachments
   body: none
   auth: none
 }
 
 headers {
   Authorization: Bearer {{token}}
-  X-Owner-Context-Id: {{ownerContextId}}
+  X-Owner-Id: {{ownerContextId}}
 }

@@ -5,16 +5,21 @@ meta {
 }
 
 post {
-  url: {{baseUrl}}/api/attachments/{{transactionId}}
+  url: {{baseUrl}}/api/transactions/{{transactionId}}/attachments
   body: multipartForm
   auth: none
 }
 
 headers {
   Authorization: Bearer {{token}}
-  X-Owner-Context-Id: {{ownerContextId}}
+  X-Owner-Id: {{ownerContextId}}
 }
 
 body:multipart-form {
   file: @/absolute/path/to/receipt.pdf
+}
+
+docs {
+  NOTA: Este endpoint devuelve 501 — política de MIME/tamaño pendiente de aprobación.
+  Respuesta esperada: { "error": "Los límites de tipo y tamaño de archivo no están aprobados..." }
 }

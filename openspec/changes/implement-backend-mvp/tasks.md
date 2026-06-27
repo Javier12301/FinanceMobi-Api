@@ -93,7 +93,7 @@ Pause after this checkpoint and report in Spanish.
 
 Pause after this checkpoint and report in Spanish.
 
-## Checkpoint 6: Transaction Ledger ✅ Completado
+## Checkpoint 6: Transaction Ledger ✅ Revisado y aprobado
 
 - [x] 16. Implement income, expense, and transfer creation with positive decimal amounts and atomic wallet balance updates.
 - [x] 17. Implement wallet row locking for balance mutations and transaction filters for wallet, date range, and category.
@@ -113,28 +113,39 @@ Pause after this checkpoint and report in Spanish.
 - updateTransaction recalcula balance revirtiendo cambio anterior y aplicando el nuevo.
 - Ownership verificado en el servicio (no `ownershipGuard` directo) porque Transaction no tiene `ownerId`.
 
+### Fixes post-revisión (CP6)
+- **[bloqueante — IDOR]** `listTransactions` con `filters.walletId` externo podía devolver transacciones de otro owner. Fix: verificar que `walletId` pertenece al owner antes de usarlo; retornar `[]` si no está en su scope.
+- **[bloqueante — atomicidad]** `$queryRaw SELECT ... FOR UPDATE` en `createTransaction` usaba `prisma` global en lugar del cliente `tx` de la transacción. Fix: `(tx as any).$queryRaw\`...\`` para garantizar misma conexión/transacción.
+- **[bloqueante — atomicidad]** `updateTransaction` también usaba `(prisma as any).$queryRaw` fuera del contexto `tx`. Fix: mismo patrón `(tx as any).$queryRaw`.
+- **[medio — correctitud]** TRANSFER update solo ajustaba wallet origen; no revertía/aplicaba cambio en wallet destino. Fix: lock y actualización de `destinationWalletId` dentro de la misma transacción Prisma.
+- **[medio — seguridad]** `updateTransaction` aceptaba `categoryId` nuevo sin verificar ownership. Fix: cargar categoría dentro de `tx`, verificar `cat.ownerId === ownerContext.ownerId`.
+- **[test]** Assertion de `filtra por walletId` actualizada: espera `{ walletId: { in: ['wallet-1'] } }` (refleja el fix IDOR).
+
 Pause after this checkpoint and report in Spanish.
 
-## Checkpoint 7: Attachments And Google Drive
+## Checkpoint 7: Attachments And Google Drive ✅ Revisado y aprobado
 
 - [x] 19. Implement Drive connection foundations with `drive.file` scope, root folder persistence, and encrypted refresh-token usage.
 - [x] 20. Implement attachment upload/list/delete behavior according to resolved file limits and Drive deletion policy.
 - [x] 21. Add tests for attachment authorization, Drive failure handling, and metadata persistence using mocks.
 
 ### Archivos creados (CP7)
-- `src/features/attachments/attachments.service.ts` — connectDrive (cifra token, crea carpeta), uploadAttachment (valida MIME/tamaño, sube a Drive, persiste en DB), listAttachments (verifica ownership), deleteAttachment (501 stub)
-- `src/features/attachments/attachments.controller.ts` — adaptadores Request → service
-- `src/features/attachments/attachments.routes.ts` — cadena de middlewares: auth → ownerContext → requireRole → multer → controller
+- `src/features/attachments/attachments.service.ts` — connectDrive (cifra token, crea carpeta), uploadAttachment (501 stub — política pendiente), listAttachments (verifica ownership), deleteAttachment (501 stub)
+- `src/features/attachments/attachments.controller.ts` — adaptadores Request → service; uploadAttachmentHandler llama next(AppError(501)) directamente
+- `src/features/attachments/attachments.routes.ts` — cadena de middlewares: auth → ownerContext → requireRole → controller (sin multer hasta política aprobada)
 - `src/core/security/driveClient.ts` — factory getDriveClient(encryptedToken) con OAuth2 setup
-- `src/features/attachments/attachments.test.ts` — 8 tests: encrypt/plaintext, Upload API call, MIME rejection (501), size limit rejection (501), Drive failure isolation, list authorization, delete stub (501)
+- `src/features/attachments/attachments.test.ts` — 8 tests: encrypt/plaintext, Upload retorna 501 (política), MIME rejection (501), size limit rejection (501), Drive failure isolation, list authorization, delete stub (501)
 
 ### Mejoras de implementación (CP7)
-- Refresh token cifrado con AES-256-GCM antes de persistir en `User.encryptedGoogleRefreshToken`
-- Drive client factory descifra el token al crear cliente OAuth2
-- Upload flujo: validar MIME → validar tamaño → verificar ownership → sube a Drive (si falla, no persist en DB) → persist en DB
-- File limits (MIME types, max size) implementados como 501 stubs (política MVP)
-- Multer configurado con `memoryStorage()` para uploads sin dependencia de FS
-- Se agregó GOOGLE_CLIENT_SECRET a env.ts, .env.example y vitest.config.ts
+- Refresh token cifrado con AES-256-GCM antes de persistir en `User.encryptedGoogleRefreshToken`.
+- Drive client factory descifra el token al crear cliente OAuth2.
+- Se agregó `GOOGLE_CLIENT_SECRET` a `env.ts`, `.env.example` y `vitest.config.ts`.
+
+### Fixes post-revisión (CP7)
+- **[bloqueante — seguridad]** Upload aceptaba archivos a pesar de tener política de MIME/tamaño sin resolver. Fix (Option A): `uploadAttachment` lanza `AppError(501)` inmediatamente sin procesar el archivo. Todo el código de validación/Drive fue eliminado como dead code.
+- **[bloqueante — seguridad]** Multer sin límite de tamaño configurado podía consumir memoria arbitraria. Fix: multer removido por completo de `attachments.routes.ts` hasta que la política sea aprobada.
+- **[bloqueante — correctitud]** `attachments.controller.ts` tenía `if (!req.file) throw new Error('No file provided')` → generaba HTTP 500 en lugar del 501 esperado. Fix: `uploadAttachmentHandler` ahora llama `next(new AppError(501, ...))` directamente sin inspeccionar `req.file`.
+- **[test]** Test `llama Drive API` actualizado para esperar rechazo con `statusCode: 501` (refleja política bloqueada).
 
 Pause after this checkpoint and report in Spanish.
 

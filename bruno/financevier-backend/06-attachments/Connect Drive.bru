@@ -1,0 +1,37 @@
+meta {
+  name: Connect Drive
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/drive/connect
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{token}}
+  X-Owner-Id: {{ownerContextId}}
+}
+
+body:json {
+  {
+    "refreshToken": "{{googleRefreshToken}}"
+  }
+}
+
+docs {
+  Conecta Google Drive al usuario autenticado.
+  Requiere un refresh_token obtenido del flujo OAuth2 de Google con scope "drive.file".
+  El token se cifra con AES-256-GCM antes de persistir — nunca se guarda en plaintext.
+
+  Cómo obtener el refresh_token para pruebas:
+  1. Usar Google OAuth Playground: https://developers.google.com/oauthplayground
+  2. Scope requerido: https://www.googleapis.com/auth/drive.file
+  3. Configurar con tu GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en "OAuth 2.0 configuration"
+  4. Autorizar → Exchange authorization code for tokens → copiar "Refresh token"
+  5. Setear la variable googleRefreshToken en el entorno Bruno con ese valor
+
+  Respuesta exitosa: { "message": "Google Drive conectado" }
+}
