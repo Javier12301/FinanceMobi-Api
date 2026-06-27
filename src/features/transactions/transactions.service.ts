@@ -86,13 +86,13 @@ export async function listTransactions(ownerId: string, filters?: ListTransactio
   });
   const walletIds = wallets.map((w) => w.id);
 
-  const where: any = {
-    walletId: { in: walletIds },
-  };
-
-  if (filters?.walletId) {
-    where.walletId = filters.walletId;
+  if (filters?.walletId && !walletIds.includes(filters.walletId)) {
+    return [];
   }
+
+  const where: any = {
+    walletId: { in: filters?.walletId ? [filters.walletId] : walletIds },
+  };
   if (filters?.categoryId) {
     where.categoryId = filters.categoryId;
   }
@@ -122,27 +122,34 @@ export async function updateTransaction(
       throw new AppError(404, 'Billetera no encontrada');
     }
 
-    await (prisma as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${oldTx.walletId} FOR UPDATE`;
-
-    // Revertir balance anterior
-    let newBalance = Number(wallet.currentBalance);
-    if (oldTx.movementType === 'INCOME') {
-      newBalance -= Number(oldTx.amount);
-    } else if (oldTx.movementType === 'EXPENSE') {
-      newBalance += Number(oldTx.amount);
-    } else if (oldTx.movementType === 'TRANSFER') {
-      newBalance += Number(oldTx.amount);
+    // Fix 4: validar ownership del nuevo categoryId si se cambia
+    if (input.categoryId) {
+      const cat = await tx.category.findUnique({ where: { id: input.categoryId } });
+      if (!cat || cat.ownerId !== ownerContext.ownerId) {
+        throw new AppError(404, 'Categoría no encontrada');
+      }
     }
 
-    // Aplicar nueva transacción
+    // Fix 2: usar tx.$queryRaw para que el lock sea parte de la transacción
+    await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${oldTx.walletId} FOR UPDATE`;
+
     const finalAmount = input.amount ?? Number(oldTx.amount);
-    const finalMovement = oldTx.movementType;
-    if (finalMovement === 'INCOME') {
-      newBalance += finalAmount;
-    } else if (finalMovement === 'EXPENSE') {
-      newBalance -= finalAmount;
-    } else if (finalMovement === 'TRANSFER') {
-      newBalance -= finalAmount;
+
+    // Revertir + aplicar balance en source
+    let newBalance = Number(wallet.currentBalance);
+    if (oldTx.movementType === 'INCOME') {
+      newBalance = newBalance - Number(oldTx.amount) + finalAmount;
+    } else if (oldTx.movementType === 'EXPENSE') {
+      newBalance = newBalance + Number(oldTx.amount) - finalAmount;
+    } else if (oldTx.movementType === 'TRANSFER') {
+      // Fix 3: también ajustar wallet destino en TRANSFER
+      if (!oldTx.destinationWalletId) throw new AppError(500, 'Transferencia sin wallet destino');
+      await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${oldTx.destinationWalletId} FOR UPDATE`;
+      const destWallet = await tx.wallet.findUnique({ where: { id: oldTx.destinationWalletId } });
+      if (!destWallet) throw new AppError(404, 'Billetera destino no encontrada');
+      const newDestBalance = Number(destWallet.currentBalance) - Number(oldTx.amount) + finalAmount;
+      await tx.wallet.update({ where: { id: oldTx.destinationWalletId }, data: { currentBalance: newDestBalance } });
+      newBalance = newBalance + Number(oldTx.amount) - finalAmount;
     }
 
     await tx.wallet.update({

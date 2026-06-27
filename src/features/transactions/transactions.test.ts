@@ -238,7 +238,7 @@ describe('Transactions Service', () => {
 
       expect(mockTransactionFindMany).toHaveBeenCalled();
       const call = mockTransactionFindMany.mock.calls[0][0];
-      expect(call.where).toMatchObject({ walletId: 'wallet-1' });
+      expect(call.where).toMatchObject({ walletId: { in: ['wallet-1'] } });
     });
 
     it('filtra por categoryId', async () => {

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import multer from 'multer';
 import { authMiddleware } from '../../core/middlewares/auth';
 import { requireOwnerContext } from '../../core/middlewares/ownerContext';
 import { requireRole } from '../../core/middlewares/rbac';
@@ -11,16 +10,15 @@ import {
 } from './attachments.controller';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
 
 router.post('/drive/connect', authMiddleware, requireOwnerContext, connectDriveHandler);
 
+// ponytail: multer removido hasta que política de MIME/tamaño sea aprobada (Fix 5+6)
 router.post(
   '/transactions/:transactionId/attachments',
   authMiddleware,
   requireOwnerContext,
   requireRole('OWNER', 'SUPERVISOR'),
-  upload.single('file'),
   uploadAttachmentHandler,
 );
 

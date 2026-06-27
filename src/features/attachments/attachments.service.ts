@@ -42,69 +42,12 @@ export async function connectDrive(userId: string, refreshToken: string) {
 }
 
 export async function uploadAttachment(
-  transactionId: string,
-  ownerId: string,
-  file: { buffer: Buffer; mimetype: string; originalname: string },
+  _transactionId: string,
+  _ownerId: string,
+  _file: { buffer: Buffer; mimetype: string; originalname: string },
 ) {
-  // Validar MIME type
-  const allowedMimes = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-  if (!allowedMimes.includes(file.mimetype)) {
-    throw new AppError(501, 'Los tipos de archivo permitidos aún no están definidos.');
-  }
-
-  // Validar tamaño (ponytail: 10MB para MVP, upgrade cuando sea necesario)
-  const MAX_SIZE = 10 * 1024 * 1024;
-  if (file.buffer.length > MAX_SIZE) {
-    throw new AppError(501, 'El límite de tamaño de archivo aún no está definido.');
-  }
-
-  // Verificar ownership
-  const tx = await prisma.transaction.findUnique({
-    where: { id: transactionId },
-    include: { wallet: true },
-  });
-  if (!tx) throw new AppError(404, 'Transacción no encontrada');
-  if (tx.wallet.ownerId !== ownerId) throw new AppError(403, 'No autorizado');
-
-  // Get Drive client
-  const user = await prisma.user.findUnique({
-    where: { id: ownerId },
-  });
-  if (!user || !user.encryptedGoogleRefreshToken || !user.driveFolderId) {
-    throw new AppError(400, 'Google Drive no configurado');
-  }
-
-  const driveClient = getDriveClient(user.encryptedGoogleRefreshToken);
-
-  // Upload to Drive BEFORE saving to DB (if Drive fails, don't persist)
-  const uploadRes = await driveClient.files.create({
-    requestBody: {
-      name: file.originalname,
-      parents: [user.driveFolderId],
-      appProperties: {
-        transactionId,
-        ownerId,
-      },
-    },
-    media: {
-      mimeType: file.mimetype,
-      body: file.buffer,
-    },
-    fields: 'id',
-  });
-
-  const googleFileId = uploadRes.data.id!;
-
-  // Now save to DB
-  const attachment = await prisma.transactionAttachment.create({
-    data: {
-      transactionId,
-      googleFileId,
-      mimeType: file.mimetype,
-    },
-  });
-
-  return attachment;
+  // ponytail: política de MIME y tamaño no aprobada — bloquear hasta resolución
+  throw new AppError(501, 'Los límites de tipo y tamaño de archivo no están aprobados. La funcionalidad de subida no está disponible aún.');
 }
 
 export async function listAttachments(transactionId: string, ownerContext: { ownerId: string; role: string }) {

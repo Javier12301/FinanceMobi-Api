@@ -133,14 +133,14 @@ describe('uploadAttachment', () => {
       },
     });
 
-    const result = await uploadAttachment('tx-123', 'owner-123', {
-      buffer: Buffer.from('file content'),
-      mimetype: 'application/pdf',
-      originalname: 'document.pdf',
-    });
-
-    expect(result).toHaveProperty('googleFileId', 'drive-file-123');
-    expect(mockCreateAttachment).toHaveBeenCalled();
+    await expect(
+      uploadAttachment('tx-123', 'owner-123', {
+        buffer: Buffer.from('file content'),
+        mimetype: 'application/pdf',
+        originalname: 'document.pdf',
+      }),
+    ).rejects.toMatchObject({ statusCode: 501 });
+    expect(mockCreateAttachment).not.toHaveBeenCalled();
   });
 
   it('MIME type no aprobado retorna 501', async () => {

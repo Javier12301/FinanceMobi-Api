@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { connectDrive, uploadAttachment, listAttachments, deleteAttachment } from './attachments.service';
+import { AppError } from '../../core/errors';
 
 export async function connectDriveHandler(req: Request, res: Response, next: NextFunction) {
   try {
@@ -11,21 +12,8 @@ export async function connectDriveHandler(req: Request, res: Response, next: Nex
   }
 }
 
-export async function uploadAttachmentHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const { transactionId } = req.params;
-    if (!req.file) throw new Error('No file provided');
-
-    const attachment = await uploadAttachment(transactionId, req.ownerContext!.ownerId, {
-      buffer: req.file.buffer,
-      mimetype: req.file.mimetype,
-      originalname: req.file.originalname,
-    });
-
-    res.status(201).json(attachment);
-  } catch (err) {
-    next(err);
-  }
+export async function uploadAttachmentHandler(_req: Request, _res: Response, next: NextFunction) {
+  next(new AppError(501, 'Los límites de tipo y tamaño de archivo no están aprobados. La funcionalidad de subida no está disponible aún.'));
 }
 
 export async function listAttachmentsHandler(req: Request, res: Response, next: NextFunction) {
