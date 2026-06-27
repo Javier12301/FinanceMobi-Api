@@ -19,10 +19,34 @@ app.set('trust proxy', 1);
 const allowedOrigins = env.ALLOWED_ORIGINS
   ? env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
   : [];
+const isLanMode = process.argv.includes('--lan');
+
+function isPrivateLanFrontendOrigin(origin: string) {
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    const firstOctets = host.split('.').map(Number);
+    const isPrivateIp =
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host.startsWith('192.168.') ||
+      host.startsWith('10.') ||
+      (firstOctets[0] === 172 && firstOctets[1] >= 16 && firstOctets[1] <= 31);
+
+    return url.protocol === 'http:' && url.port === '5173' && isPrivateIp;
+  } catch {
+    return false;
+  }
+}
 
 app.use(
   cors({
-    origin: allowedOrigins.length ? allowedOrigins : false,
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (isLanMode && isPrivateLanFrontendOrigin(origin)) return callback(null, true);
+      return callback(null, false);
+    },
     credentials: true,
   }),
 );

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node --env-file=.env --watch --import=tsx src/server.ts",
+    "dev:lan": "node --env-file=.env --watch --import=tsx src/server.ts --lan",
     "build": "tsc",
     "start": "node --env-file=.env dist/server.js",
     "test": "vitest run",

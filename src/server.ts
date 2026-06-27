@@ -6,8 +6,10 @@ import { redis } from './core/database/redis';
 async function main() {
   if (redis.status === 'wait') await redis.connect();
 
-  app.listen(env.PORT, () => {
-    console.log(`[server] listening on port ${env.PORT} (${env.NODE_ENV})`);
+  const host = process.argv.includes('--lan') ? '0.0.0.0' : '127.0.0.1';
+
+  app.listen(env.PORT, host, () => {
+    console.log(`[server] listening on ${host}:${env.PORT} (${env.NODE_ENV})`);
   });
 }
 
