@@ -151,8 +151,19 @@ Pause after this checkpoint and report in Spanish.
 
 ## Checkpoint 8: Deployment Hardening
 
-- [ ] 22. Complete Docker Compose health checks for MySQL, Redis, backend, frontend integration point, and proxy.
-- [ ] 23. Add Nginx config that preserves `/api/*`, forwards real client headers, and supports frontend fallback routing.
-- [ ] 24. Add `.env.example`, production exposure notes, and final verification commands.
+- [x] 22. Complete Docker Compose health checks for MySQL, Redis, backend, frontend integration point, and proxy.
+- [x] 23. Add Nginx config that preserves `/api/*`, forwards real client headers, and supports frontend fallback routing.
+- [x] 24. Add `.env.example`, production exposure notes, and final verification commands.
+
+### Archivos creados (CP8)
+- `Dockerfile` — build multistage Node 22: compila TS, copia solo artefactos de prod, corre `prisma migrate deploy` al arrancar
+- `docker-compose.prod.yml` — stack completo con health checks; MySQL y Redis sin puertos expuestos al host; backend con healthcheck en `/api/health`; Nginx sirve frontend desde `./frontend/dist`
+- `nginx.conf` — proxy `/api/*` → `backend:3000` con headers reales (`X-Forwarded-For`, `X-Real-IP`); fallback SPA (`try_files`) para rutas del cliente
+- `README.md` — guía de dev local + guía de deploy VPS paso a paso (variables críticas, build de frontend, SSL con Certbot)
+
+### Nota de integración
+- `docker-compose.yml` original queda intacto para desarrollo local (sin cambios)
+- CORS configurable vía `ALLOWED_ORIGINS` en `.env` (agregado junto a CP8)
+- Frontend build debe copiarse a `./frontend/dist/` antes de levantar el compose de prod
 
 Pause after this checkpoint and report in Spanish.

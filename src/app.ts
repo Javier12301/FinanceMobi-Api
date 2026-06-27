@@ -1,5 +1,7 @@
 import express from 'express';
+import cors from 'cors';
 import pinoHttp from 'pino-http';
+import { env } from './core/config/env';
 import { errorHandler } from './core/middlewares/errorHandler';
 import authRoutes from './features/auth/auth.routes';
 import walletsRouter from './features/wallets/wallets.routes';
@@ -10,6 +12,17 @@ import attachmentsRouter from './features/attachments/attachments.routes';
 export const app = express();
 
 app.set('trust proxy', 1);
+
+const allowedOrigins = env.ALLOWED_ORIGINS
+  ? env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
+
+app.use(
+  cors({
+    origin: allowedOrigins.length ? allowedOrigins : false,
+    credentials: true,
+  }),
+);
 
 app.use(
   pinoHttp({
