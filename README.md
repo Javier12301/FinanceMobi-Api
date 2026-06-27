@@ -34,11 +34,11 @@ Copy-Item .env.example .env
 
 Luego editá `.env` con tus valores locales. Lo mínimo que necesitás cambiar:
 
-| Variable | Qué es | Cómo obtenerla |
-|---|---|---|
-| `JWT_SECRET` | Clave de firma de tokens | Mínimo 32 caracteres aleatorios |
-| `ENCRYPTION_KEY` | Clave AES para tokens de Google | Exactamente 64 caracteres hex |
-| `GOOGLE_CLIENT_ID` | OAuth app ID | Google Cloud Console |
+| Variable             | Qué es                         | Cómo obtenerla                  |
+| -------------------- | ------------------------------- | -------------------------------- |
+| `JWT_SECRET`       | Clave de firma de tokens        | Mínimo 32 caracteres aleatorios |
+| `ENCRYPTION_KEY`   | Clave AES para tokens de Google | Exactamente 64 caracteres hex    |
+| `GOOGLE_CLIENT_ID` | OAuth app ID                    | Google Cloud Console             |
 
 **Generá secretos seguros así:**
 
@@ -73,6 +73,8 @@ npm run db:migrate
 
 # Cargar datos de referencia (tipos de billetera, etc.)
 npm run db:seed
+# Cargar cuentas correspondientes para el seed en el env, hay 
+# dos una para autenticación de google y otra para login con emial y password
 ```
 
 ### 5. Iniciar el servidor
@@ -100,12 +102,12 @@ bruno/financevier-backend/
 
 Endpoints disponibles hoy (Checkpoint 3):
 
-| Request | Descripción |
-|---|---|
-| `Health` | Verifica que el servidor responde |
-| `Login` | Autenticación con email + password |
-| `Google Login` | Login con Google `id_token` |
-| `Logout` | Cierra la sesión actual (revoca el JWT en Redis) |
+| Request          | Descripción                                      |
+| ---------------- | ------------------------------------------------- |
+| `Health`       | Verifica que el servidor responde                 |
+| `Login`        | Autenticación con email + password               |
+| `Google Login` | Login con Google`id_token`                      |
+| `Logout`       | Cierra la sesión actual (revoca el JWT en Redis) |
 
 > Los demás folders ya están mapeados pero devuelven 404 hasta que se implementen.
 
@@ -134,16 +136,16 @@ docker compose down -v
 
 ## Estado del proyecto
 
-| Checkpoint | Alcance | Estado |
-|---|---|---|
-| CP1 | Estructura base, health endpoint, logging, errores | ✅ Aprobado |
-| CP2 | Auth con JWT, Redis sessions, rate limiting | ✅ Aprobado |
-| CP3 | Google SSO, cifrado AES-256-GCM para refresh tokens | ✅ Aprobado |
-| CP4 | Delegación, roles, autorización RBAC + IDOR guards | ⏳ Pendiente |
-| CP5 | Billeteras, categorías, lookups | ⏳ Pendiente |
-| CP6 | Transacciones, balance atómico | ⏳ Pendiente |
-| CP7 | Adjuntos, Google Drive | ⏳ Pendiente |
-| CP8 | Docker + Nginx para despliegue | ⏳ Pendiente |
+| Checkpoint | Alcance                                              | Estado       |
+| ---------- | ---------------------------------------------------- | ------------ |
+| CP1        | Estructura base, health endpoint, logging, errores   | ✅ Aprobado  |
+| CP2        | Auth con JWT, Redis sessions, rate limiting          | ✅ Aprobado  |
+| CP3        | Google SSO, cifrado AES-256-GCM para refresh tokens  | ✅ Aprobado  |
+| CP4        | Delegación, roles, autorización RBAC + IDOR guards | ⏳ Pendiente |
+| CP5        | Billeteras, categorías, lookups                     | ⏳ Pendiente |
+| CP6        | Transacciones, balance atómico                      | ⏳ Pendiente |
+| CP7        | Adjuntos, Google Drive                               | ⏳ Pendiente |
+| CP8        | Docker + Nginx para despliegue                       | ⏳ Pendiente |
 
 ---
 
@@ -156,4 +158,3 @@ docker compose down -v
 - **Tests:** Vitest + Supertest
 - **Infra local:** Docker Compose
 - **HTTP Client:** Bruno
-

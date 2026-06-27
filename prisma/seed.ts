@@ -3,6 +3,12 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+const adminEmail = process.env.SEED_ADMIN_EMAIL ?? 'admin@example.com';
+const adminName = process.env.SEED_ADMIN_NAME ?? 'Admin';
+const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? 'changeme';
+const googleUserEmail = process.env.SEED_GOOGLE_USER_EMAIL ?? 'google_user@example.com';
+const googleUserName = process.env.SEED_GOOGLE_USER_NAME ?? 'Google User';
+
 async function main() {
   // ── Lookup data ──────────────────────────────────────────────────────────
   await prisma.walletType.createMany({
@@ -15,31 +21,30 @@ async function main() {
     skipDuplicates: true,
   });
 
-  // ── Usuario de prueba — login con credenciales ────────────────────────────
-  const adminHash = bcrypt.hashSync('admin', 12);
+  // ── Usuario admin — login con contraseña ─────────────────────────────────
+  const adminHash = bcrypt.hashSync(adminPassword, 12);
   await prisma.user.upsert({
-    where: { email: 'admin@gmail.com' },
+    where: { email: adminEmail },
     update: {},
     create: {
-      email: 'admin@gmail.com',
-      name: 'Admin',
+      email: adminEmail,
+      name: adminName,
       passwordHash: adminHash,
     },
   });
 
-  // ── Usuario de prueba — Google SSO ────────────────────────────────────────
-  // El flow de loginWithGoogle lo encuentra por email y emite sesión.
+  // ── Usuario Google SSO ────────────────────────────────────────────────────
   // El googleId se vincula en el primer login real con Google.
   await prisma.user.upsert({
-    where: { email: 'javierramirez1230123@gmail.com' },
+    where: { email: googleUserEmail },
     update: {},
     create: {
-      email: 'javierramirez1230123@gmail.com',
-      name: 'Javier',
+      email: googleUserEmail,
+      name: googleUserName,
     },
   });
 
-  console.log('Seed completo.');
+  console.log(`Seed completo: admin=${adminEmail}, google=${googleUserEmail}`);
 }
 
 main()

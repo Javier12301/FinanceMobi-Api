@@ -1,16 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
-import { verifyToken, JwtPayload } from '../security/jwt';
+import { verifyToken } from '../security/jwt';
 import { redis } from '../database/redis';
 import { AppError } from '../errors';
-
-// Extiende el tipo de Request para que los controladores accedan a req.user
-declare global {
-  namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
-  }
-}
 
 export async function authMiddleware(req: Request, _res: Response, next: NextFunction) {
   try {

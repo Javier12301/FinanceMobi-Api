@@ -1,93 +1,90 @@
-# Fixes To Apply Before Checkpoint 4
+# Complexity Cuts Before Checkpoint 6
 
-Read this file only. Apply these fixes before starting Checkpoint 4.
+Scope: over-engineering only. Do not change behavior. Keep tests green.
 
-## 1. Credential Login Dummy Hash
-
-Where:
-
-- `src/features/auth/auth.service.ts`
-- `src/features/auth/auth.test.ts`
-
-Problem:
-
-- `loginWithCredentials()` uses a fake bcrypt-looking string when the user does not exist.
-- If the dummy hash is not a valid bcrypt hash, `bcryptjs.compare()` can return faster and weaken the intended user-enumeration protection.
-
-Apply:
-
-- Replace the fake string with a real precomputed bcrypt hash generated once for a dummy password.
-- Keep the behavior: when the user does not exist, still call `verifyPassword(password, DUMMY_PASSWORD_HASH)`.
-- Add or update a test proving that missing-user login still calls `verifyPassword()` with a valid bcrypt hash-looking value.
-
-Why:
-
-- Login must keep the same observable behavior for unknown email and wrong password.
-
-## 2. Google Email Verification
+## 1. Single Source For Zod Schemas
 
 Where:
 
-- `src/core/security/googleAuth.ts`
-- `src/features/auth/auth.service.ts`
-- `src/features/auth/google.auth.test.ts`
+- `src/features/wallets/wallets.service.ts`
+- `src/features/wallets/wallets.routes.ts`
+- `src/features/wallets/categories.service.ts`
+- `src/features/wallets/categories.routes.ts`
 
-Problem:
+Cut:
 
-- Google SSO currently accepts `sub` and `email`, then links/logs in by `googleId OR email`.
-- It does not require `email_verified === true` before trusting the email.
+- Zod schemas are duplicated in routes and services.
+- Request validation already runs in `validate(schema)` before controllers.
 
 Apply:
 
-- Read `email_verified` from the Google ID token payload.
-- Reject the token with `AppError(401, 'Token de Google inválido')` if email is missing or not verified.
-- Keep client-facing error generic.
-- Add a test for unverified Google email being rejected.
+- Move schemas to one shared module, for example `src/features/wallets/wallets.schema.ts`.
+- Routes import schemas for `validate(schema)`.
+- Services accept already validated typed input and stop calling `.parse()` again.
 
 Why:
 
-- Email-based account matching is only safe if Google confirms the email is verified.
+- One validation path is enough. Duplicate schemas drift and add noise.
 
-## 3. Encryption Key Hex Validation
+## 2. Remove Duplicate Wallet Ownership Check From Service
 
 Where:
 
-- `src/core/config/env.ts`
+- `src/features/wallets/wallets.service.ts`
+- `src/features/wallets/wallets.controller.ts`
 
-Problem:
+Cut:
 
-- `ENCRYPTION_KEY` validates length 64 but not that all chars are hex.
+- `deleteWallet(walletId, ownerId)` repeats ownership validation already enforced by `ownershipGuard('wallet', 'walletId')` in the route.
 
 Apply:
 
-- Change validation to require exactly 64 hex chars: `/^[0-9a-fA-F]{64}$/`.
+- Change service signature to `deleteWallet(walletId: string)`.
+- Keep only transaction-count check and delete.
+- Controller no longer passes `ownerContext.ownerId` to delete service.
 
 Why:
 
-- AES-256-GCM needs 32 bytes. A non-hex 64-char string should fail at startup, not during token encryption.
+- Authorization belongs to the middleware chain for this endpoint. Rechecking it in the service is duplicate work.
 
-## 4. MovementType Schema Decision
+## 3. Consolidate Express Request Type Augmentation
 
 Where:
 
-- `prisma/schema.prisma`
-- `prisma/seed.ts`
-- `openspec/specs/wallets-categories/spec.md` if the contract changes
+- `src/core/middlewares/auth.ts`
+- `src/core/types/express.d.ts`
 
-Problem:
+Cut:
 
-- Current Prisma schema uses `enum MovementType`.
-- Original docs mentioned `MovementType` as lookup seed data.
+- `Request` is augmented in two places.
 
 Apply:
 
-- Do not change this until the user confirms one option.
-- Recommended for MVP: keep enum if values are fixed: `INCOME`, `EXPENSE`, `TRANSFER`.
-- If the user wants editable/DB-managed movement types, switch to lookup table before creating real migrations.
+- Move `user?: JwtPayload` into `src/core/types/express.d.ts`.
+- Remove `declare global` from `auth.ts`.
 
 Why:
 
-- This affects DB migrations and should be decided before ledger work.
+- One augmentation file is easier to find and avoids future merge/conflict noise.
+
+## 4. Remove Superficial Role Tests From Wallet Service Tests
+
+Where:
+
+- `src/features/wallets/wallets.test.ts`
+
+Cut:
+
+- Tests that mention `ASESOR` behavior while calling wallet services directly.
+- Services do not enforce roles; routes/middlewares do.
+
+Apply:
+
+- Delete those tests or convert them into route/middleware tests if coverage is needed.
+
+Why:
+
+- A test that cannot fail for the behavior it names is noise.
 
 ## Required Verification
 
@@ -96,7 +93,6 @@ Run:
 ```bash
 npx tsc --noEmit
 npx vitest run
-npm audit
 ```
 
-Report in Spanish and wait for approval before Checkpoint 4.
+Report in Spanish before starting Checkpoint 6.

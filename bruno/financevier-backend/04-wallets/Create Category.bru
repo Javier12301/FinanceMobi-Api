@@ -1,11 +1,11 @@
 meta {
-  name: Create Wallet
+  name: Create Category
   type: http
-  seq: 2
+  seq: 6
 }
 
 post {
-  url: {{baseUrl}}/api/wallets
+  url: {{baseUrl}}/api/categories
   body: json
   auth: none
 }
@@ -17,15 +17,13 @@ headers {
 
 body:json {
   {
-    "name": "Cash",
-    "typeId": 1,
-    "description": "Main cash wallet",
-    "initialBalance": 1000
+    "name": "Alimentación",
+    "movementType": "EXPENSE"
   }
 }
 
 script:post-response {
   if (res.body && res.body.id) {
-    bru.setVar("walletId", res.body.id);
+    bru.setVar("categoryId", res.body.id);
   }
 }

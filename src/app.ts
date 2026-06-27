@@ -2,6 +2,10 @@ import express from 'express';
 import pinoHttp from 'pino-http';
 import { errorHandler } from './core/middlewares/errorHandler';
 import authRoutes from './features/auth/auth.routes';
+import walletsRouter from './features/wallets/wallets.routes';
+import categoriesRouter from './features/wallets/categories.routes';
+import transactionsRouter from './features/transactions/transactions.routes';
+import attachmentsRouter from './features/attachments/attachments.routes';
 
 export const app = express();
 
@@ -30,5 +34,9 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/wallets', walletsRouter);
+app.use('/api', categoriesRouter);
+app.use('/api/transactions', transactionsRouter);
+app.use('/api', attachmentsRouter);
 
 app.use(errorHandler);

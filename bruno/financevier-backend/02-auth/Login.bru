@@ -12,13 +12,17 @@ post {
 
 body:json {
   {
-    "email": "user@example.com",
-    "password": "change-me"
+    "email": "admin@gmail.com",
+    "password": "admin"
   }
 }
 
 script:post-response {
   if (res.body && res.body.token) {
     bru.setVar("token", res.body.token);
+    // Decodifica sub del JWT para usar como X-Owner-Id
+    const parts = res.body.token.split('.');
+    const payload = JSON.parse(atob(parts[1]));
+    bru.setVar("ownerContextId", payload.sub);
   }
 }

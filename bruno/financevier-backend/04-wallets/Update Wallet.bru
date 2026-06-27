@@ -4,7 +4,7 @@ meta {
   seq: 3
 }
 
-patch {
+put {
   url: {{baseUrl}}/api/wallets/{{walletId}}
   body: json
   auth: none
@@ -12,7 +12,7 @@ patch {
 
 headers {
   Authorization: Bearer {{token}}
-  X-Owner-Context-Id: {{ownerContextId}}
+  X-Owner-Id: {{ownerContextId}}
 }
 
 body:json {

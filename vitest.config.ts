@@ -10,6 +10,7 @@ export default defineConfig({
       JWT_EXPIRES_IN: '7d',
       ENCRYPTION_KEY: '0'.repeat(64),
       GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
+      GOOGLE_CLIENT_SECRET: 'test-client-secret',
     },
   },
 });
