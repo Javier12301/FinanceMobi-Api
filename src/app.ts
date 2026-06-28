@@ -13,6 +13,10 @@ import attachmentsRouter from './features/attachments/attachments.routes';
 import delegationsRouter from './features/delegations/delegation.routes';
 import budgetsRouter from './features/budgets/budgets.routes';
 import recurringRouter from './features/recurring/recurring.routes';
+import statsRouter from './features/stats/stats.routes';
+import debtsRouter from './features/debts/debts.routes';
+import notificationsRouter from './features/notifications/notifications.routes';
+import insightsRouter from './features/insights/insights.routes';
 
 export const app = express();
 
@@ -84,5 +88,9 @@ app.use('/api/transactions', transactionsRouter);
 app.use('/api', attachmentsRouter);
 app.use('/api/budgets', budgetsRouter);
 app.use('/api/recurring-rules', recurringRouter);
+app.use('/api', statsRouter);
+app.use('/api/debts', debtsRouter);
+app.use('/api', notificationsRouter);
+app.use('/api/insights', insightsRouter);
 
 app.use(errorHandler);

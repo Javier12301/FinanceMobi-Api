@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createTransaction, listTransactions, updateTransaction, deleteTransaction } from './transactions.service';
-import type { CreateTransactionInput, UpdateTransactionInput, ListTransactionFiltersInput } from './transactions.schema';
+import { listTransactionFiltersSchema } from './transactions.schema';
+import type { CreateTransactionInput, UpdateTransactionInput } from './transactions.schema';
+import { AppError } from '../../core/errors';
 
 export async function createTransactionHandler(req: Request, res: Response, next: NextFunction) {
   try {
@@ -13,8 +15,10 @@ export async function createTransactionHandler(req: Request, res: Response, next
 
 export async function listTransactionsHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const filters = req.query as Partial<ListTransactionFiltersInput>;
-    const result = await listTransactions(req.ownerContext!.ownerId, filters);
+    const hasQueryParams = Object.keys(req.query).length > 0;
+    const parsed = listTransactionFiltersSchema.safeParse(req.query);
+    if (!parsed.success) throw new AppError(400, 'Parámetros de filtro inválidos');
+    const result = await listTransactions(req.ownerContext!.ownerId, parsed.data, hasQueryParams);
     res.json(result);
   } catch (error) {
     next(error);

@@ -8,103 +8,124 @@ interface OwnerContext {
   role: 'OWNER' | 'SUPERVISOR' | 'ASESOR';
 }
 
+// ponytail: helper extraído para permitir composición en transacciones externas (e.g. debt payment)
+export async function createTransactionInTx(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  input: CreateTransactionInput,
+  ownerContext: OwnerContext,
+  userId: string,
+) {
+  // Validar existencia y ownership antes de tomar locks
+  const walletCheck = await tx.wallet.findUnique({ where: { id: input.walletId }, select: { id: true, ownerId: true } });
+  if (!walletCheck || walletCheck.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Billetera no encontrada');
+
+  const category = await tx.category.findUnique({ where: { id: input.categoryId } });
+  if (!category || category.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Categoría no encontrada');
+
+  if (input.movementType === 'TRANSFER') {
+    if (!input.destinationWalletId) throw new AppError(400, 'destinationWalletId requerido para TRANSFER');
+    if (input.destinationWalletId === input.walletId) throw new AppError(400, 'La billetera origen y destino no pueden ser la misma');
+    const destCheck = await tx.wallet.findUnique({ where: { id: input.destinationWalletId }, select: { id: true, ownerId: true } });
+    if (!destCheck || destCheck.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Billetera destino no encontrada');
+  }
+
+  // Locks deterministicos por id (previene deadlock en transferencias cruzadas concurrentes)
+  const lockIds = input.movementType === 'TRANSFER' && input.destinationWalletId
+    ? [input.walletId, input.destinationWalletId].sort()
+    : [input.walletId];
+  for (const wid of lockIds) {
+    await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${wid} FOR UPDATE`;
+  }
+
+  // Leer balances DESPUÉS de los locks
+  const wallet = await tx.wallet.findUnique({ where: { id: input.walletId } });
+  if (!wallet) throw new AppError(500, 'Billetera no encontrada tras lock');
+
+  let newBalance = Number(wallet.currentBalance);
+  if (input.movementType === 'INCOME') {
+    newBalance += input.amount;
+  } else if (input.movementType === 'EXPENSE') {
+    newBalance -= input.amount;
+  } else if (input.movementType === 'TRANSFER' && input.destinationWalletId) {
+    const destWallet = await tx.wallet.findUnique({ where: { id: input.destinationWalletId } });
+    if (!destWallet) throw new AppError(500, 'Billetera destino no encontrada tras lock');
+    const destNewBalance = Number(destWallet.currentBalance) + input.amount;
+    await tx.wallet.update({ where: { id: input.destinationWalletId }, data: { currentBalance: destNewBalance } });
+    newBalance -= input.amount;
+  }
+
+  await tx.wallet.update({ where: { id: input.walletId }, data: { currentBalance: newBalance } });
+
+  const transaction = await tx.transaction.create({
+    data: {
+      walletId: input.walletId,
+      destinationWalletId: input.destinationWalletId,
+      categoryId: input.categoryId,
+      amount: input.amount,
+      description: input.description,
+      date: new Date(input.date),
+      movementType: input.movementType,
+    },
+  });
+
+  await tx.transactionHistory.create({
+    data: { transactionId: transaction.id, modifiedById: userId, action: 'CREATE', newSnapshot: transaction },
+  });
+
+  return transaction;
+}
+
 export async function createTransaction(input: CreateTransactionInput, ownerContext: OwnerContext, userId: string) {
   if (input.amount <= 0) {
     throw new AppError(400, 'El monto debe ser positivo');
   }
-
-  return prisma.$transaction(async (tx) => {
-    const wallet = await tx.wallet.findUnique({ where: { id: input.walletId } });
-    if (!wallet || wallet.ownerId !== ownerContext.ownerId) {
-      throw new AppError(404, 'Billetera no encontrada');
-    }
-
-    const category = await tx.category.findUnique({ where: { id: input.categoryId } });
-    if (!category || category.ownerId !== ownerContext.ownerId) {
-      throw new AppError(404, 'Categoría no encontrada');
-    }
-
-    await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${input.walletId} FOR UPDATE`;
-
-    let newBalance = Number(wallet.currentBalance);
-    if (input.movementType === 'INCOME') {
-      newBalance += input.amount;
-    } else if (input.movementType === 'EXPENSE') {
-      newBalance -= input.amount;
-    } else if (input.movementType === 'TRANSFER') {
-      if (!input.destinationWalletId) {
-        throw new AppError(400, 'destinationWalletId requerido para TRANSFER');
-      }
-      const destWallet = await tx.wallet.findUnique({ where: { id: input.destinationWalletId } });
-      if (!destWallet || destWallet.ownerId !== ownerContext.ownerId) {
-        throw new AppError(404, 'Billetera destino no encontrada');
-      }
-      await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${input.destinationWalletId} FOR UPDATE`;
-
-      const destNewBalance = Number(destWallet.currentBalance) + input.amount;
-      await tx.wallet.update({
-        where: { id: input.destinationWalletId },
-        data: { currentBalance: destNewBalance },
-      });
-
-      newBalance -= input.amount;
-    }
-
-    await tx.wallet.update({
-      where: { id: input.walletId },
-      data: { currentBalance: newBalance },
-    });
-
-    const transaction = await tx.transaction.create({
-      data: {
-        walletId: input.walletId,
-        destinationWalletId: input.destinationWalletId,
-        categoryId: input.categoryId,
-        amount: input.amount,
-        description: input.description,
-        date: new Date(input.date),
-        movementType: input.movementType,
-      },
-    });
-
-    await tx.transactionHistory.create({
-      data: {
-        transactionId: transaction.id,
-        modifiedById: userId,
-        action: 'CREATE',
-        newSnapshot: transaction,
-      },
-    });
-
-    return transaction;
-  });
+  return prisma.$transaction((tx) => createTransactionInTx(tx, input, ownerContext, userId));
 }
 
-export async function listTransactions(ownerId: string, filters?: ListTransactionFiltersInput) {
-  const wallets = await prisma.wallet.findMany({
-    where: { ownerId },
-    select: { id: true },
-  });
+export async function listTransactions(ownerId: string, filters?: ListTransactionFiltersInput, hasQueryParams = false) {
+  const wallets = await prisma.wallet.findMany({ where: { ownerId }, select: { id: true } });
   const walletIds = wallets.map((w) => w.id);
 
   if (filters?.walletId && !walletIds.includes(filters.walletId)) {
-    return [];
+    if (!hasQueryParams) return [];
+    const page = filters?.page ?? 1;
+    const pageSize = filters?.pageSize ?? 50;
+    return { items: [], total: 0, page, pageSize };
   }
 
   const where: any = {
     walletId: { in: filters?.walletId ? [filters.walletId] : walletIds },
     deletedAt: null,
   };
-  if (filters?.categoryId) {
-    where.categoryId = filters.categoryId;
-  }
-  if (filters?.dateFrom || filters?.dateTo) {
+  if (filters?.categoryId) where.categoryId = filters.categoryId;
+  if (filters?.type) where.movementType = filters.type;
+
+  // Soporte V3 (dateFrom/dateTo) y V4 (from/to) — ambos alimentan where.date
+  const dateFrom = filters?.from ?? filters?.dateFrom;
+  const dateTo = filters?.to ?? filters?.dateTo;
+  if (dateFrom || dateTo) {
     where.date = {};
-    if (filters.dateFrom) where.date.gte = new Date(filters.dateFrom);
-    if (filters.dateTo) where.date.lte = new Date(filters.dateTo);
+    if (dateFrom) where.date.gte = new Date(dateFrom);
+    if (dateTo) where.date.lte = new Date(dateTo);
   }
 
-  return prisma.transaction.findMany({ where });
+  if (filters?.q) {
+    where.description = { contains: filters.q };
+  }
+
+  // Sin query params → V3 compat: array plano
+  if (!hasQueryParams) {
+    return prisma.transaction.findMany({ where });
+  }
+
+  // Con paginación → V4: { items, total, page, pageSize }
+  const page = filters?.page ?? 1;
+  const pageSize = filters?.pageSize ?? 50;
+  const [items, total] = await Promise.all([
+    prisma.transaction.findMany({ where, skip: (page - 1) * pageSize, take: pageSize, orderBy: { date: 'desc' } }),
+    prisma.transaction.count({ where }),
+  ]);
+  return { items, total, page, pageSize };
 }
 
 export async function updateTransaction(

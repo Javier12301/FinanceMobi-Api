@@ -22,6 +22,13 @@ export const listTransactionFiltersSchema = z.object({
   categoryId: z.string().uuid().optional(),
   dateFrom: z.string().datetime().optional(),
   dateTo: z.string().datetime().optional(),
+  // V4: filtros adicionales
+  q: z.string().optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  type: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  pageSize: z.coerce.number().int().positive().max(200).optional(),
 });
 
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;

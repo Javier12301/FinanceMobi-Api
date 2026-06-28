@@ -284,6 +284,25 @@ describe('Transactions Service', () => {
       const call = mockTransactionFindMany.mock.calls[0][0];
       expect(call.where.date).toBeDefined();
     });
+
+    // F9: walletId no perteneciente al owner debe devolver envelope V4 (no array) cuando hasQueryParams=true
+    it('devuelve envelope V4 vacío cuando walletId no pertenece al owner y hay query params', async () => {
+      mockWalletFindMany.mockResolvedValue([{ id: 'wallet-1' }]);
+
+      const result = await listTransactions('owner-1', { walletId: 'wallet-ajena', page: 1, pageSize: 10 }, true);
+
+      expect(result).toMatchObject({ items: [], total: 0, page: 1, pageSize: 10 });
+      expect(mockTransactionFindMany).not.toHaveBeenCalled();
+    });
+
+    it('devuelve array vacío cuando walletId no pertenece al owner y no hay query params (V3 compat)', async () => {
+      mockWalletFindMany.mockResolvedValue([{ id: 'wallet-1' }]);
+
+      const result = await listTransactions('owner-1', { walletId: 'wallet-ajena' }, false);
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(0);
+    });
   });
 
   describe('updateTransaction', () => {

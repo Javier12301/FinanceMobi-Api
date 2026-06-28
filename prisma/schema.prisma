@@ -47,7 +47,10 @@ model User {
   recurringRules       RecurringRule[]
   delegationsGiven     UserDelegation[]     @relation("DelegationOwner")
   delegationsReceived  UserDelegation[]     @relation("DelegationDelegated")
-  transactionHistories TransactionHistory[]
+  transactionHistories     TransactionHistory[]
+  debts                    Debt[]
+  notificationDevices      NotificationDevice[]
+  notificationPreference   NotificationPreference?
 }
 
 model UserDelegation {
@@ -111,6 +114,7 @@ model Category {
   transactions   Transaction[]
   budgets        Budget[]
   recurringRules RecurringRule[]
+  debts          Debt[]
 }
 
 // ──────────────────────────────────────────
@@ -182,6 +186,62 @@ model TransactionAttachment {
 // ──────────────────────────────────────────
 // Recurring Rules
 // ──────────────────────────────────────────
+
+// ──────────────────────────────────────────
+// Notifications
+// ──────────────────────────────────────────
+
+model NotificationDevice {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String
+  platform  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, token])
+}
+
+model NotificationPreference {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  dailyReminder   Boolean  @default(true)
+  budgetAlerts    Boolean  @default(true)
+  recurringAlerts Boolean  @default(true)
+  reminderHour    String   @default("21:00")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ──────────────────────────────────────────
+// Debts & Loans
+// ──────────────────────────────────────────
+
+model Debt {
+  id                String    @id @default(uuid())
+  ownerId           String
+  direction         String    // I_OWE | OWED_TO_ME
+  counterparty      String
+  categoryId        String?
+  principal         Decimal   @db.Decimal(15, 2)
+  remaining         Decimal   @db.Decimal(15, 2)
+  recurringRuleId   String?
+  installmentsTotal Int?
+  installmentsPaid  Int       @default(0)
+  dueDate           DateTime?
+  status            String    @default("ACTIVE") // ACTIVE | PAID
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  owner    User      @relation(fields: [ownerId], references: [id])
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  @@index([ownerId])
+}
 
 model RecurringRule {
   id                  String       @id @default(uuid())

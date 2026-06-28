@@ -54,12 +54,14 @@ export async function loginWithGoogle(idToken: string) {
 }
 
 const DEFAULT_CATEGORIES = [
-  { movementType: 'EXPENSE', name: 'Comida' },
-  { movementType: 'EXPENSE', name: 'Transporte' },
-  { movementType: 'EXPENSE', name: 'Servicios' },
-  { movementType: 'EXPENSE', name: 'Ocio' },
-  { movementType: 'INCOME', name: 'Sueldo' },
-  { movementType: 'TRANSFER', name: 'Transferencia' },
+  { movementType: 'EXPENSE', name: 'Comida',       icon: 'utensils',  color: '#F97316' },
+  { movementType: 'EXPENSE', name: 'Transporte',   icon: 'bus',       color: '#3B82F6' },
+  { movementType: 'EXPENSE', name: 'Servicios',    icon: 'lightbulb', color: '#F59E0B' },
+  { movementType: 'EXPENSE', name: 'Supermercado', icon: 'cart',      color: '#10B981' },
+  { movementType: 'EXPENSE', name: 'Salud',        icon: 'health',    color: '#EF4444' },
+  { movementType: 'EXPENSE', name: 'Ocio',         icon: 'drama',     color: '#8B5CF6' },
+  { movementType: 'INCOME',  name: 'Sueldo',       icon: 'wallet',    color: '#22C55E' },
+  { movementType: 'EXPENSE', name: 'Otros',        icon: 'tag',       color: '#6366F1' },
 ] as const;
 
 export async function registerWithCredentials(name: string, email: string, password: string) {
@@ -80,7 +82,16 @@ export async function registerWithCredentials(name: string, email: string, passw
           ownerId: newUser.id,
           movementType: cat.movementType,
           name: cat.name,
+          icon: cat.icon,
+          color: cat.color,
         })),
+      });
+
+      const cashType = await tx.walletType.findFirst({ where: { name: 'CASH' } });
+      if (!cashType) throw new AppError(500, 'WalletType CASH no encontrado');
+
+      await tx.wallet.create({
+        data: { ownerId: newUser.id, typeId: cashType.id, name: 'Efectivo', initialBalance: 0, currentBalance: 0 },
       });
 
       return newUser;

@@ -9,7 +9,7 @@ import {
   updateTransactionHandler,
   deleteTransactionHandler,
 } from './transactions.controller';
-import { createTransactionSchema, updateTransactionSchema } from './transactions.schema';
+import { createTransactionSchema, updateTransactionSchema, listTransactionFiltersSchema } from './transactions.schema';
 
 const router = Router();
 

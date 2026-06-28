@@ -142,17 +142,17 @@ describe('registerWithCredentials', () => {
   const mockHashPassword = hashPassword as ReturnType<typeof vi.fn>;
   const mockTransaction = prisma.$transaction as ReturnType<typeof vi.fn>;
 
+  const makeMockTx = (userId = 'new-user-id', email = 'new@test.com') => ({
+    user: { create: vi.fn().mockResolvedValue({ id: userId, email, name: 'Test User', passwordHash: 'hashed' }) },
+    category: { createMany: vi.fn().mockResolvedValue({ count: 8 }) },
+    walletType: { findFirst: vi.fn().mockResolvedValue({ id: 1, name: 'CASH' }) },
+    wallet: { create: vi.fn().mockResolvedValue({ id: 'wallet-id', name: 'Efectivo' }) },
+  });
+
   it('retorna token cuando el registro es válido', async () => {
-    const newUser = { id: 'new-user-id', email: 'new@test.com', name: 'Test User', passwordHash: 'hashed' };
     mockFindFirst.mockResolvedValue(null);
     mockHashPassword.mockResolvedValue('hashedpass');
-    mockTransaction.mockImplementation(async (fn: Function) => {
-      const mockTx = {
-        user: { create: vi.fn().mockResolvedValue(newUser) },
-        category: { createMany: vi.fn().mockResolvedValue({ count: 6 }) },
-      };
-      return fn(mockTx);
-    });
+    mockTransaction.mockImplementation(async (fn: Function) => fn(makeMockTx()));
 
     const result = await registerWithCredentials('Test User', 'new@test.com', 'password123');
 
@@ -171,13 +171,7 @@ describe('registerWithCredentials', () => {
   it('hashea la contraseña antes de crear el usuario', async () => {
     mockFindFirst.mockResolvedValue(null);
     mockHashPassword.mockResolvedValue('hashedpass');
-    mockTransaction.mockImplementation(async (fn: Function) => {
-      const mockTx = {
-        user: { create: vi.fn().mockResolvedValue({ id: 'new-id', email: 'test@test.com', name: 'Test', passwordHash: 'hashedpass' }) },
-        category: { createMany: vi.fn().mockResolvedValue({ count: 6 }) },
-      };
-      return fn(mockTx);
-    });
+    mockTransaction.mockImplementation(async (fn: Function) => fn(makeMockTx('new-id', 'test@test.com')));
 
     await registerWithCredentials('Test', 'test@test.com', 'mypass123');
 
@@ -188,13 +182,7 @@ describe('registerWithCredentials', () => {
     const { redis } = await import('../../core/database/redis');
     mockFindFirst.mockResolvedValue(null);
     mockHashPassword.mockResolvedValue('hashedpass');
-    mockTransaction.mockImplementation(async (fn: Function) => {
-      const mockTx = {
-        user: { create: vi.fn().mockResolvedValue({ id: 'new-id', email: 'new@test.com', name: 'Test', passwordHash: 'hashedpass' }) },
-        category: { createMany: vi.fn().mockResolvedValue({ count: 6 }) },
-      };
-      return fn(mockTx);
-    });
+    mockTransaction.mockImplementation(async (fn: Function) => fn(makeMockTx('new-id', 'new@test.com')));
 
     await registerWithCredentials('Test', 'new@test.com', 'pass');
 
@@ -204,6 +192,32 @@ describe('registerWithCredentials', () => {
       'EX',
       expect.any(Number),
     );
+  });
+
+  it('crea wallet Efectivo durante el registro', async () => {
+    mockFindFirst.mockResolvedValue(null);
+    mockHashPassword.mockResolvedValue('hashedpass');
+    const tx = makeMockTx();
+    mockTransaction.mockImplementation(async (fn: Function) => fn(tx));
+
+    await registerWithCredentials('Test', 'new@test.com', 'pass');
+
+    expect(tx.wallet.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ name: 'Efectivo', initialBalance: 0, currentBalance: 0 }) }),
+    );
+  });
+
+  it('crea exactamente 8 categorías V4 con icon y color', async () => {
+    mockFindFirst.mockResolvedValue(null);
+    mockHashPassword.mockResolvedValue('hashedpass');
+    const tx = makeMockTx();
+    mockTransaction.mockImplementation(async (fn: Function) => fn(tx));
+
+    await registerWithCredentials('Test', 'new@test.com', 'pass');
+
+    const { data } = tx.category.createMany.mock.calls[0][0];
+    expect(data).toHaveLength(8);
+    expect(data.every((c: any) => c.icon && c.color)).toBe(true);
   });
 });
 
