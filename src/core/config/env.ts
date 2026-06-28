@@ -14,6 +14,9 @@ const schema = z.object({
   GOOGLE_REDIRECT_URI: z.string().url(),
   // Orígenes CORS separados por coma, ej: https://app.com,https://admin.app.com
   ALLOWED_ORIGINS: z.string().default(''),
+  // Registro de cuentas nuevas. Cerrado por defecto durante el testing privado.
+  // ponytail: string→bool explícito; z.coerce.boolean("false") daría true
+  REGISTRATION_ENABLED: z.string().default('false').transform((v) => v === 'true'),
 });
 
 const parsed = schema.safeParse(process.env);

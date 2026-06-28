@@ -4,8 +4,10 @@ import { verifyPassword, hashPassword, DUMMY_HASH } from '../../core/security/pa
 import { signToken, tokenTtlSeconds } from '../../core/security/jwt';
 import { verifyGoogleIdToken } from '../../core/security/googleAuth';
 import { AppError } from '../../core/errors';
+import { env } from '../../core/config/env';
 
 const GENERIC_LOGIN_ERROR = 'Credenciales incorrectas';
+const REGISTRATION_CLOSED_ERROR = 'El registro de nuevas cuentas está deshabilitado';
 
 export async function loginWithCredentials(email: string, password: string) {
   const user = await prisma.user.findUnique({ where: { email } });
@@ -44,6 +46,9 @@ export async function loginWithGoogle(idToken: string) {
   });
 
   if (!user) {
+    // Google SSO también es un alta: si el registro está cerrado, no creamos cuenta.
+    // Los usuarios existentes (incluido el CREADOR) siguen entrando normalmente.
+    if (!env.REGISTRATION_ENABLED) throw new AppError(403, REGISTRATION_CLOSED_ERROR);
     user = await prisma.user.create({
       data: { googleId, email, name: email.split('@')[0] },
     });
@@ -65,6 +70,8 @@ const DEFAULT_CATEGORIES = [
 ] as const;
 
 export async function registerWithCredentials(name: string, email: string, password: string) {
+  if (!env.REGISTRATION_ENABLED) throw new AppError(403, REGISTRATION_CLOSED_ERROR);
+
   // Pre-check para 409 rápido; el catch P2002 cubre la race condition
   const existingUser = await prisma.user.findFirst({ where: { email } });
   if (existingUser) throw new AppError(409, 'Email ya registrado');

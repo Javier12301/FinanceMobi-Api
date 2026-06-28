@@ -26,6 +26,7 @@ vi.mock('../../core/config/env', () => ({
     GOOGLE_CLIENT_ID: 'test-client-id',
     GOOGLE_CLIENT_SECRET: 'test-client-secret',
     GOOGLE_REDIRECT_URI: 'http://localhost:5173/auth/drive/callback',
+    REGISTRATION_ENABLED: true,
   },
 }));
 

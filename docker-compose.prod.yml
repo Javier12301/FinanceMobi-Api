@@ -2,6 +2,8 @@ services:
   mysql:
     image: mysql:8.0
     restart: unless-stopped
+    # ponytail: freno de RAM para VPS de 2 GB; subir si migrás a uno más grande
+    command: --innodb-buffer-pool-size=256M
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -32,25 +34,40 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    # Dentro de la red Docker el backend habla con los servicios por su nombre,
+    # no por localhost. Esto pisa los valores de .env (que apuntan a localhost para dev).
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:6379
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      # wget viene en node:22-alpine (busybox); curl no está en la imagen
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
       interval: 15s
       timeout: 5s
       retries: 3
 
-  nginx:
-    image: nginx:alpine
+  # Caddy: sirve el frontend estático + reverse proxy a /api.
+  # En LAN/Tailscale: DOMAIN=:80 (HTTP; Tailscale termina el TLS).
+  # En VPS real: DOMAIN=tudominio.com → Caddy saca el SSL de Let's Encrypt solo.
+  caddy:
+    image: caddy:2-alpine
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro  # build del frontend
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../frontend/dist:/srv:ro      # build del frontend (vive en la raíz del repo)
+      - caddy_data:/data              # ponytail: persiste los certs, no re-emitir en cada deploy
+      - caddy_config:/config
     depends_on:
       backend:
         condition: service_healthy
@@ -58,3 +75,5 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  caddy_data:
+  caddy_config:

@@ -39,11 +39,13 @@ vi.mock('../../core/config/env', () => ({
     GOOGLE_CLIENT_ID: 'test-client-id',
     GOOGLE_CLIENT_SECRET: 'test-client-secret',
     GOOGLE_REDIRECT_URI: 'http://localhost:5173/auth/drive/callback',
+    REGISTRATION_ENABLED: true,
   },
 }));
 
 import { prisma } from '../../core/database/prisma';
 import { verifyPassword, hashPassword } from '../../core/security/password';
+import { env } from '../../core/config/env';
 
 const mockFindUnique = prisma.user.findUnique as ReturnType<typeof vi.fn>;
 const mockVerify = verifyPassword as ReturnType<typeof vi.fn>;
@@ -166,6 +168,17 @@ describe('registerWithCredentials', () => {
     await expect(registerWithCredentials('Test', 'existing@test.com', 'pass')).rejects.toMatchObject({
       statusCode: 409,
     });
+  });
+
+  it('lanza AppError 403 cuando el registro está deshabilitado', async () => {
+    (env as any).REGISTRATION_ENABLED = false;
+    try {
+      await expect(registerWithCredentials('Test', 'new@test.com', 'pass')).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    } finally {
+      (env as any).REGISTRATION_ENABLED = true;
+    }
   });
 
   it('hashea la contraseña antes de crear el usuario', async () => {

@@ -1,0 +1,15 @@
+{$DOMAIN} {
+	encode gzip
+
+	# API → backend Node (red interna de Docker, no expuesto al host)
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+
+	# Frontend SPA: sirve estáticos y cae a index.html para rutas del router
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

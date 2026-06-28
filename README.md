@@ -122,15 +122,103 @@ Si Windows pide permiso para Node.js, permitir acceso en redes privadas. Si no a
 
 ---
 
+## Deploy por Tailscale (testing privado con SSO)
+
+Este modo levanta el **stack completo** (igual que producción) en tu PC y lo
+expone solo a tu red Tailscale, con **HTTPS real** y **Google SSO funcionando**.
+Ideal para que un grupo de gente conocida pruebe la app antes de pagar un VPS.
+Solo quien esté en tu tailnet puede entrar.
+
+### Por qué Tailscale y no LAN a secas
+
+Google OAuth rechaza orígenes que sean una IP (`192.168.x.x`). Tailscale te da un
+nombre de dominio real (`*.ts.net`) con certificado Let's Encrypt válido, así que
+el botón de Google funciona. En LAN pura el SSO no anda.
+
+### Arquitectura
+
+```
+Amigos en la tailnet
+        │  https://desktop-j3kad53.hornbill-adder.ts.net
+        ▼
+Tailscale Serve  (termina el TLS, cert automático *.ts.net)
+        │  http://localhost:80
+        ▼
+Caddy  ├── /api/*  →  backend Express :3000
+       └── /*      →  frontend SPA (../frontend/dist)
+```
+
+### Requisitos (una sola vez)
+
+1. **Tailscale** instalado y logueado en tu PC y en los dispositivos de quienes prueben,
+   todos en la misma tailnet (`hornbill-adder.ts.net`).
+2. En el **admin de Tailscale** → DNS: activar **MagicDNS** y **HTTPS Certificates**.
+3. En **Google Cloud Console** (OAuth client `171866358561-...`), agregar:
+   - *Authorized JavaScript origins*: `https://desktop-j3kad53.hornbill-adder.ts.net`
+   - *Authorized redirect URIs*: `https://desktop-j3kad53.hornbill-adder.ts.net/auth/drive/callback`
+
+> El nombre `desktop-j3kad53.hornbill-adder.ts.net` ya está cargado en `Backend/.env`
+> (`ALLOWED_ORIGINS`, `GOOGLE_REDIRECT_URI`, `DOMAIN=:80`) y en `frontend/.env`
+> (`VITE_API_BASE_URL`). Si cambiás de PC, actualizá esos cuatro valores.
+
+### Levantar
+
+```bash
+# 1. Build del frontend (Caddy lo sirve desde ../frontend/dist)
+cd frontend
+npm install
+npm run build
+
+# 2. Stack completo: MySQL + Redis + backend + Caddy
+cd ../Backend
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. (primera vez) crear tu cuenta CREADOR y datos base
+docker compose -f docker-compose.prod.yml exec backend npm run db:seed
+
+# 4. Exponer Caddy (:80) a la tailnet con HTTPS automático
+tailscale serve --bg 80
+```
+
+`tailscale serve status` te muestra la URL pública dentro de la tailnet.
+La sintaxis de `serve` cambió entre versiones de Tailscale; si `--bg 80` falla,
+revisá `tailscale serve --help` (alternativa común: `tailscale serve https / http://localhost:80`).
+
+### Usar
+
+Cualquiera en la tailnet abre:
+
+```text
+https://desktop-j3kad53.hornbill-adder.ts.net
+```
+
+Se registran (el registro está abierto: `REGISTRATION_ENABLED=true`), prueban SSO, etc.
+
+### Apagar / liberar
+
+```bash
+tailscale serve --https=443 off          # deja de exponer
+docker compose -f docker-compose.prod.yml down   # baja el stack (los datos quedan en los volúmenes)
+```
+
+### Pasar a producción cuando esté ok
+
+Es el **mismo `docker-compose.prod.yml`**. En el VPS solo cambia:
+`DOMAIN=:80` → tu dominio real (Caddy saca el SSL solo), se quita `tailscale serve`,
+y se actualizan los orígenes en Google Console al dominio final. Ver siguiente sección.
+
+---
+
 ## Deploy en VPS
 
-El stack completo corre con Docker Compose. Nginx actúa como proxy reverso y sirve el frontend estático.
+El stack completo corre con Docker Compose. **Caddy** actúa como proxy reverso,
+sirve el frontend estático y **gestiona el SSL automáticamente** (Let's Encrypt).
 
 ### Estructura en producción
 
 ```
-VPS (puerto 80)
-└── Nginx
+VPS (puertos 80 + 443)
+└── Caddy  (SSL automático para DOMAIN)
     ├── /api/*  →  backend Express :3000
     └── /*      →  frontend SPA (build estático)
 ```
@@ -168,36 +256,38 @@ Variables críticas para producción:
 | `ENCRYPTION_KEY`                              | 64 chars hex —`openssl rand -hex 32`                |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials                                      |
 | `ALLOWED_ORIGINS`                             | Dominio del frontend, ej:`https://app.tudominio.com` |
+| `DOMAIN`                                       | Tu dominio real, ej:`app.tudominio.com` (Caddy saca el SSL para este host) |
+
+Apuntá el DNS (registro A) de `DOMAIN` a la IP del VPS antes de levantar, o Caddy
+no podrá emitir el certificado.
 
 **4. Build del frontend**
 
-El frontend compilado debe estar en `./frontend/dist/` antes de levantar el compose (Nginx lo sirve desde ahí).
+El frontend compilado debe estar en `../frontend/dist/` (junto al repo) antes de
+levantar el compose; Caddy lo sirve desde ahí.
 
 ```bash
-# Ejemplo — ajustar según dónde esté el repo del frontend
-cd /opt/financevier-frontend && npm run build
-cp -r dist /opt/financevier/frontend/dist
+cd frontend && npm install && npm run build
 ```
 
 **5. Levantar**
 
 ```bash
+cd Backend
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 **6. Verificar**
 
 ```bash
-curl http://localhost/api/health
+curl https://tudominio.com/api/health
 docker compose -f docker-compose.prod.yml ps
 ```
 
-### SSL con Let's Encrypt (recomendado)
+### SSL
 
-```bash
-apt install -y certbot python3-certbot-nginx
-certbot --nginx -d tudominio.com
-```
+Automático. Caddy emite y renueva el certificado de Let's Encrypt para `DOMAIN`
+en cuanto el dominio resuelve a la IP del VPS. No hay que correr certbot ni nada.
 
 ### Actualizar en producción
 
