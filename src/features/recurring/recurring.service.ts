@@ -1,5 +1,6 @@
 import { prisma } from '../../core/database/prisma';
 import { AppError } from '../../core/errors';
+import { payDebtInTx } from '../debts/debts.service';
 import type { CreateRecurringRuleInput, UpdateRecurringRuleInput } from './recurring.schema';
 
 interface OwnerContext {
@@ -76,6 +77,7 @@ export async function createRule(ownerId: string, input: CreateRecurringRuleInpu
       startDate,
       endDate: input.endDate ? new Date(input.endDate) : null,
       nextRunDate,
+      debtId: input.debtId ?? null,
     },
   });
 }
@@ -119,6 +121,13 @@ async function confirmRuleAtomically(
     const now = new Date();
     if (rule.nextRunDate > now) return { alreadyConfirmed: true };
     if (!rule.active) throw new AppError(409, 'La regla está pausada');
+
+    // Cuando la regla dispara una cuota de deuda, delegar al flujo payDebt (maneja lock, balance, TX y Debt update)
+    if (rule.debtId) {
+      await payDebtInTx(tx, rule.debtId, rule.walletId, Number(rule.amount), ownerContext, userId, rule.description ?? undefined);
+      await tx.recurringRule.update({ where: { id: ruleId }, data: { nextRunDate: calcNextRunDate(rule.nextRunDate, rule.dayOfMonth) } });
+      return { alreadyConfirmed: false };
+    }
 
     // F9: lock wallets ANTES de leer currentBalance — orden determinístico por id para evitar deadlocks
     if (rule.movementType === 'TRANSFER') {

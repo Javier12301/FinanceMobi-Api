@@ -7,6 +7,7 @@ export const createDebtSchema = z.object({
   categoryId: z.string().uuid().optional(),
   installmentsTotal: z.number().int().positive().optional(),
   dueDate: z.string().datetime().optional(),
+  walletId: z.string().uuid().optional(), // requerido para crear RecurringRule automática con cuotas
   notes: z.string().optional(),
 });
 

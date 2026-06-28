@@ -65,6 +65,7 @@ export async function createTransactionInTx(
       description: input.description,
       date: new Date(input.date),
       movementType: input.movementType,
+      debtId: input.debtId ?? null,
     },
   });
 

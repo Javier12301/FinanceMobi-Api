@@ -11,6 +11,7 @@ export const createRecurringRuleSchema = z.object({
   autoPost: z.boolean().default(false),
   startDate: z.string().datetime(),
   endDate: z.string().datetime().nullable().optional(),
+  debtId: z.string().uuid().optional(),
 });
 
 export const updateRecurringRuleSchema = z.object({

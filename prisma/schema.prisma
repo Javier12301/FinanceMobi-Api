@@ -149,6 +149,7 @@ model Transaction {
   description         String?
   date                DateTime
   movementType        MovementType
+  debtId              String?
   deletedAt           DateTime?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -156,6 +157,7 @@ model Transaction {
   wallet            Wallet                  @relation("SourceWallet", fields: [walletId], references: [id])
   destinationWallet Wallet?                 @relation("DestinationWallet", fields: [destinationWalletId], references: [id])
   category          Category                @relation(fields: [categoryId], references: [id])
+  debt              Debt?                   @relation("DebtTransactions", fields: [debtId], references: [id])
   history           TransactionHistory[]
   attachments       TransactionAttachment[]
 }
@@ -237,8 +239,10 @@ model Debt {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  owner    User      @relation(fields: [ownerId], references: [id])
-  category Category? @relation(fields: [categoryId], references: [id])
+  owner          User            @relation(fields: [ownerId], references: [id])
+  category       Category?       @relation(fields: [categoryId], references: [id])
+  transactions   Transaction[]   @relation("DebtTransactions")
+  recurringRules RecurringRule[]
 
   @@index([ownerId])
 }
@@ -259,6 +263,7 @@ model RecurringRule {
   endDate             DateTime?
   nextRunDate         DateTime
   active              Boolean      @default(true)
+  debtId              String?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
@@ -266,4 +271,5 @@ model RecurringRule {
   wallet            Wallet   @relation("RuleSourceWallet", fields: [walletId], references: [id])
   destinationWallet Wallet?  @relation("RuleDestinationWallet", fields: [destinationWalletId], references: [id])
   category          Category @relation(fields: [categoryId], references: [id])
+  debt              Debt?    @relation(fields: [debtId], references: [id])
 }

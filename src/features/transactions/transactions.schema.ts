@@ -8,6 +8,7 @@ export const createTransactionSchema = z.object({
   description: z.string().optional(),
   date: z.string().datetime(),
   movementType: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']),
+  debtId: z.string().uuid().optional(),
 });
 
 export const updateTransactionSchema = z.object({

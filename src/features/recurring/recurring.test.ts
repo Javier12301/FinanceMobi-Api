@@ -24,6 +24,11 @@ vi.mock('../../core/database/prisma', () => ({
     },
     category: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    debt: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
     },
     transaction: {
       create: vi.fn().mockResolvedValue({ id: 'new-tx-1' }),
@@ -353,6 +358,134 @@ describe('Recurring Rules Service', () => {
           role: 'OWNER',
         }),
       ).rejects.toThrow(AppError);
+    });
+
+    it('con debtId: ejecuta lógica payDebt y actualiza remaining e installmentsPaid', async () => {
+      const now = new Date();
+      const pastDate = new Date(now.getTime() - 86400000);
+
+      const fakeDebt = {
+        id: 'debt-1',
+        ownerId: 'owner-1',
+        direction: 'I_OWE',
+        counterparty: 'Banco Macro',
+        categoryId: 'cat-1',
+        remaining: 10000,
+        installmentsTotal: 12,
+        installmentsPaid: 11,
+        dueDate: new Date('2026-07-05'),
+        status: 'ACTIVE',
+      };
+
+      mockRecurringRuleFindUnique.mockResolvedValue({
+        id: 'rule-1',
+        ownerId: 'owner-1',
+        active: true,
+        nextRunDate: pastDate,
+        walletId: 'wallet-1',
+        categoryId: 'cat-1',
+        movementType: 'EXPENSE',
+        amount: 10000,
+        description: null,
+        destinationWalletId: null,
+        dayOfMonth: 5,
+        debtId: 'debt-1',
+      });
+
+      (prisma.debt as any).findUnique = vi.fn().mockResolvedValue(fakeDebt);
+      (prisma.debt as any).update = vi.fn().mockResolvedValue({ ...fakeDebt, remaining: 0, installmentsPaid: 12, status: 'PAID' });
+      (prisma.wallet as any).findUnique = vi.fn().mockResolvedValue({ id: 'wallet-1', ownerId: 'owner-1', currentBalance: 50000 });
+      (prisma.category as any).findUnique = vi.fn().mockResolvedValue({ id: 'cat-1', ownerId: 'owner-1' });
+      (prisma.transaction as any).create = vi.fn().mockResolvedValue({ id: 'new-tx-1' });
+      mockRecurringRuleUpdate.mockResolvedValue({ id: 'rule-1' });
+
+      const result = await confirmRule('owner-1', 'rule-1', 'user-1', { ownerId: 'owner-1', role: 'OWNER' });
+
+      expect(result.alreadyConfirmed).toBe(false);
+      expect((prisma.debt as any).update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ installmentsPaid: 12, status: 'PAID' }) }),
+      );
+      expect(mockRecurringRuleUpdate).toHaveBeenCalled();
+    });
+
+    it('con debtId: la transacción creada tiene debtId seteado', async () => {
+      const now = new Date();
+      const pastDate = new Date(now.getTime() - 86400000);
+
+      const fakeDebt = {
+        id: 'debt-1',
+        ownerId: 'owner-1',
+        direction: 'I_OWE',
+        counterparty: 'Banco Macro',
+        categoryId: 'cat-1',
+        remaining: 10000,
+        installmentsTotal: 12,
+        installmentsPaid: 0,
+        dueDate: new Date('2026-07-05'),
+        status: 'ACTIVE',
+      };
+
+      mockRecurringRuleFindUnique.mockResolvedValue({
+        id: 'rule-1',
+        ownerId: 'owner-1',
+        active: true,
+        nextRunDate: pastDate,
+        walletId: 'wallet-1',
+        categoryId: 'cat-1',
+        movementType: 'EXPENSE',
+        amount: 10000,
+        description: null,
+        destinationWalletId: null,
+        dayOfMonth: 5,
+        debtId: 'debt-1',
+      });
+
+      (prisma.debt as any).findUnique = vi.fn().mockResolvedValue(fakeDebt);
+      (prisma.debt as any).update = vi.fn().mockResolvedValue({ ...fakeDebt, remaining: 0, status: 'PAID' });
+      (prisma.wallet as any).findUnique = vi.fn().mockResolvedValue({ id: 'wallet-1', ownerId: 'owner-1', currentBalance: 50000 });
+      (prisma.category as any).findUnique = vi.fn().mockResolvedValue({ id: 'cat-1', ownerId: 'owner-1' });
+      const txCreate = vi.fn().mockResolvedValue({ id: 'new-tx-1' });
+      (prisma.transaction as any).create = txCreate;
+      mockRecurringRuleUpdate.mockResolvedValue({ id: 'rule-1' });
+
+      await confirmRule('owner-1', 'rule-1', 'user-1', { ownerId: 'owner-1', role: 'OWNER' });
+
+      expect(txCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ debtId: 'debt-1' }) }),
+      );
+    });
+
+    it('sin debtId: comportamiento existente sin cambios (regression)', async () => {
+      const now = new Date();
+      const pastDate = new Date(now.getTime() - 86400000);
+
+      const fakeWallet = { id: 'wallet-1', ownerId: 'owner-1', currentBalance: 500 };
+      mockRecurringRuleFindUnique.mockResolvedValue({
+        id: 'rule-1',
+        ownerId: 'owner-1',
+        active: true,
+        nextRunDate: pastDate,
+        walletId: 'wallet-1',
+        categoryId: 'cat-1',
+        movementType: 'INCOME',
+        amount: '100',
+        description: 'Test',
+        destinationWalletId: null,
+        dayOfMonth: 5,
+        debtId: null,  // ← sin deuda vinculada
+      });
+      (prisma.wallet as any).findUnique = vi.fn().mockResolvedValue(fakeWallet);
+      (prisma.wallet as any).update = vi.fn().mockResolvedValue({});
+      (prisma.transaction as any).create = vi.fn().mockResolvedValue({ id: 'new-tx-1' });
+      (prisma.transactionHistory as any).create = vi.fn().mockResolvedValue({});
+      mockRecurringRuleUpdate.mockResolvedValue({ id: 'rule-1' });
+
+      const result = await confirmRule('owner-1', 'rule-1', 'user-1', { ownerId: 'owner-1', role: 'OWNER' });
+
+      expect(result.alreadyConfirmed).toBe(false);
+      // El flujo legacy crea la transaction directamente (no toca debt)
+      expect((prisma.transaction as any).create).toHaveBeenCalled();
+      expect((prisma.debt as any).update).not.toHaveBeenCalled();
     });
   });
 });

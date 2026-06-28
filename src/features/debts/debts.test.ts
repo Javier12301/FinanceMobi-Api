@@ -90,6 +90,40 @@ describe('createDebt', () => {
   });
 });
 
+describe('createDebt con installmentsTotal + walletId', () => {
+  it('crea deuda Y RecurringRule con debtId cuando se pasan installmentsTotal + dueDate + walletId', async () => {
+    const fakeTx = {
+      wallet: { findUnique: vi.fn().mockResolvedValue({ id: 'w1', ownerId: 'owner-1' }) },
+      category: { findFirst: vi.fn().mockResolvedValue({ id: 'cat-1', ownerId: 'owner-1' }) },
+      debt: {
+        create: vi.fn().mockResolvedValue({ ...fakeDebt }),
+        update: vi.fn().mockResolvedValue({ ...fakeDebt, recurringRuleId: 'rule-1' }),
+      },
+      recurringRule: { create: vi.fn().mockResolvedValue({ id: 'rule-1' }) },
+    };
+    mockTransaction.mockImplementation(async (fn: Function) => fn(fakeTx));
+
+    await createDebt(
+      { direction: 'I_OWE', counterparty: 'Banco Macro', principal: 120000, installmentsTotal: 12, dueDate: '2026-07-05T00:00:00.000Z', walletId: 'w1' },
+      ownerCtx,
+    );
+
+    expect(fakeTx.recurringRule.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ debtId: fakeDebt.id, autoPost: false }) }),
+    );
+    expect(fakeTx.debt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ recurringRuleId: 'rule-1' }) }),
+    );
+  });
+
+  it('crea solo la deuda (sin rule) cuando no se pasa walletId', async () => {
+    mockDebtCreate.mockResolvedValue({ ...fakeDebt });
+    await createDebt({ direction: 'I_OWE', counterparty: 'X', principal: 5000, installmentsTotal: 6, dueDate: '2026-07-05T00:00:00.000Z' }, ownerCtx);
+    expect(mockDebtCreate).toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+});
+
 describe('updateDebt', () => {
   it('lanza 404 si la deuda no pertenece al owner', async () => {
     mockDebtFindUnique.mockResolvedValue({ ...fakeDebt, ownerId: 'otro-owner' });
@@ -160,6 +194,34 @@ describe('payDebt', () => {
     await payDebt('debt-1', { walletId: 'w1', amount: 10000 }, ownerCtx, 'user-1');
     expect(tx.debt.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ installmentsPaid: 1 }) }),
+    );
+  });
+
+  it('usa descripción auto-generada "Cuota N/M — counterparty" cuando hay installmentsTotal', async () => {
+    const tx = makePayTx();
+    mockTransaction.mockImplementation(async (fn: Function) => fn(tx));
+    await payDebt('debt-1', { walletId: 'w1', amount: 10000 }, ownerCtx, 'user-1');
+    expect(tx.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ description: 'Cuota 1/12 — Banco Macro' }) }),
+    );
+  });
+
+  it('usa descripción auto-generada "Pago — counterparty" cuando no hay installmentsTotal', async () => {
+    const tx = makePayTx();
+    tx.debt.findUnique = vi.fn().mockResolvedValue({ ...fakeDebt, installmentsTotal: null });
+    mockTransaction.mockImplementation(async (fn: Function) => fn(tx));
+    await payDebt('debt-1', { walletId: 'w1', amount: 10000 }, ownerCtx, 'user-1');
+    expect(tx.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ description: 'Pago — Banco Macro' }) }),
+    );
+  });
+
+  it('incluye debtId en la transacción creada', async () => {
+    const tx = makePayTx();
+    mockTransaction.mockImplementation(async (fn: Function) => fn(tx));
+    await payDebt('debt-1', { walletId: 'w1', amount: 10000 }, ownerCtx, 'user-1');
+    expect(tx.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ debtId: 'debt-1' }) }),
     );
   });
 
