@@ -1,11 +1,29 @@
 import { Request, Response, NextFunction } from 'express';
-import { connectDrive, uploadAttachment, listAttachments, deleteAttachment } from './attachments.service';
+import { getAuthUrl, connectDrive, uploadAttachment, listAttachments, deleteAttachment } from './attachments.service';
 import { AppError } from '../../core/errors';
+
+export async function getAuthUrlHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    // F4: Drive pertenece solo al owner autenticado, no a delegados
+    if (req.user!.sub !== req.ownerContext!.ownerId) {
+      throw new AppError(403, 'Solo el owner puede conectar Google Drive');
+    }
+    res.json(await getAuthUrl(req.user!.sub));
+  } catch (err) {
+    next(err);
+  }
+}
 
 export async function connectDriveHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const { refreshToken } = req.body;
-    await connectDrive(req.user!.sub, refreshToken);
+    // F4: Drive pertenece solo al owner autenticado, no a delegados
+    if (req.user!.sub !== req.ownerContext!.ownerId) {
+      throw new AppError(403, 'Solo el owner puede conectar Google Drive');
+    }
+    const { code, state } = req.body;
+    if (!code) throw new AppError(400, 'code es requerido');
+    if (!state) throw new AppError(400, 'state es requerido');
+    await connectDrive(req.user!.sub, code, state);
     res.status(200).json({ message: 'Google Drive conectado' });
   } catch (err) {
     next(err);

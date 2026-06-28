@@ -31,6 +31,17 @@ vi.mock('../../core/security/password', () => ({
   DUMMY_HASH: '$2a$12$static.dummy.hash.for.testing.purposes.only.XXXXXXXXX',
 }));
 
+vi.mock('../../core/config/env', () => ({
+  env: {
+    JWT_SECRET: 'test-secret-at-least-32-characters-long',
+    JWT_EXPIRES_IN: '7d',
+    ENCRYPTION_KEY: '0'.repeat(64),
+    GOOGLE_CLIENT_ID: 'test-client-id',
+    GOOGLE_CLIENT_SECRET: 'test-client-secret',
+    GOOGLE_REDIRECT_URI: 'http://localhost:5173/auth/drive/callback',
+  },
+}));
+
 import { prisma } from '../../core/database/prisma';
 import { verifyPassword, hashPassword } from '../../core/security/password';
 

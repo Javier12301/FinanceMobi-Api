@@ -1,15 +1,48 @@
 import { prisma } from '../../core/database/prisma';
+import { redis } from '../../core/database/redis';
 import { encrypt } from '../../core/security/encryption';
 import { getDriveClient } from '../../core/security/driveClient';
 import { AppError } from '../../core/errors';
 import { env } from '../../core/config/env';
 import { Readable } from 'stream';
+import { google } from 'googleapis';
+import crypto from 'crypto';
 
-export async function connectDrive(userId: string, refreshToken: string) {
+const DRIVE_STATE_TTL = 600; // 10 min
+
+export async function getAuthUrl(userId: string): Promise<{ url: string; state: string }> {
+  const state = crypto.randomUUID();
+  // F1: persistir state en Redis con TTL corto para validación CSRF
+  await redis.set(`drive_oauth_state:${userId}:${state}`, '1', 'EX', DRIVE_STATE_TTL);
+  const oauth2 = new google.auth.OAuth2(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, env.GOOGLE_REDIRECT_URI);
+  const url = oauth2.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/drive.file'],
+    prompt: 'consent',
+    state,
+  });
+  return { url, state };
+}
+
+export async function connectDrive(userId: string, code: string, state: string) {
+  // F1: validar y consumir state CSRF
+  const key = `drive_oauth_state:${userId}:${state}`;
+  const valid = await redis.get(key);
+  if (!valid) throw new AppError(400, 'State OAuth inválido o expirado');
+  await redis.del(key);
+
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError(404, 'Usuario no encontrado');
 
-  const encrypted = encrypt(refreshToken, env.ENCRYPTION_KEY);
+  // Exchange authorization code for tokens (server-side)
+  const oauth2 = new google.auth.OAuth2(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET, env.GOOGLE_REDIRECT_URI);
+  const { tokens } = await oauth2.getToken(code);
+
+  if (!tokens.refresh_token) {
+    throw new AppError(400, 'No se obtuvo refresh token — el usuario debe reconectar con revocar acceso previo');
+  }
+
+  const encrypted = encrypt(tokens.refresh_token, env.ENCRYPTION_KEY);
   const driveClient = getDriveClient(encrypted);
 
   // Create root folder if not exists

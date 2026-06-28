@@ -11,6 +11,7 @@ const schema = z.object({
   ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'ENCRYPTION_KEY debe ser exactamente 64 caracteres hexadecimales'),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
+  GOOGLE_REDIRECT_URI: z.string().url(),
   // Orígenes CORS separados por coma, ej: https://app.com,https://admin.app.com
   ALLOWED_ORIGINS: z.string().default(''),
 });

@@ -5,6 +5,7 @@ import { requireOwnerContext } from '../../core/middlewares/ownerContext';
 import { requireRole } from '../../core/middlewares/rbac';
 import { AppError } from '../../core/errors';
 import {
+  getAuthUrlHandler,
   connectDriveHandler,
   uploadAttachmentHandler,
   listAttachmentsHandler,
@@ -23,6 +24,7 @@ const upload = multer({
 
 const router = Router();
 
+router.get('/drive/auth-url', authMiddleware, requireOwnerContext, getAuthUrlHandler);
 router.post('/drive/connect', authMiddleware, requireOwnerContext, connectDriveHandler);
 
 router.post(

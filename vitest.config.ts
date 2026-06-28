@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    include: ['src/**/*.test.ts'],
     env: {
       NODE_ENV: 'test',
       DATABASE_URL: 'mysql://test:test@localhost:3306/test',
@@ -11,6 +12,7 @@ export default defineConfig({
       ENCRYPTION_KEY: '0'.repeat(64),
       GOOGLE_CLIENT_ID: 'test-client-id.apps.googleusercontent.com',
       GOOGLE_CLIENT_SECRET: 'test-client-secret',
+      GOOGLE_REDIRECT_URI: 'http://localhost:5173/auth/drive/callback',
     },
   },
 });

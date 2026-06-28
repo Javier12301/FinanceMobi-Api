@@ -5,6 +5,7 @@ API REST en TypeScript/Express para la app de finanzas personales.
 ## Desarrollo local
 
 ### Requisitos
+
 - Node 22+
 - Docker Desktop
 
@@ -159,14 +160,14 @@ nano .env
 
 Variables críticas para producción:
 
-| Variable | Descripción |
-|----------|-------------|
-| `DATABASE_URL` | `mysql://user:pass@mysql:3306/financevier` |
-| `REDIS_URL` | `redis://redis:6379` |
-| `JWT_SECRET` | Mínimo 32 chars aleatorios |
-| `ENCRYPTION_KEY` | 64 chars hex — `openssl rand -hex 32` |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials |
-| `ALLOWED_ORIGINS` | Dominio del frontend, ej: `https://app.tudominio.com` |
+| Variable                                        | Descripción                                           |
+| ----------------------------------------------- | ------------------------------------------------------ |
+| `DATABASE_URL`                                | `mysql://user:pass@mysql:3306/financevier`           |
+| `REDIS_URL`                                   | `redis://redis:6379`                                 |
+| `JWT_SECRET`                                  | Mínimo 32 chars aleatorios                            |
+| `ENCRYPTION_KEY`                              | 64 chars hex —`openssl rand -hex 32`                |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials                                      |
+| `ALLOWED_ORIGINS`                             | Dominio del frontend, ej:`https://app.tudominio.com` |
 
 **4. Build del frontend**
 

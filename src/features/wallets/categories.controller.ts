@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { createCategory as svcCreate, listCategories as svcList } from './categories.service';
+import { createCategory as svcCreate, listCategories as svcList, updateCategory as svcUpdate, deleteCategory as svcDelete } from './categories.service';
 import { prisma } from '../../core/database/prisma';
-import type { CreateCategoryInput } from './wallets.schema';
+import type { CreateCategoryInput, UpdateCategoryInput } from './wallets.schema';
 
 export async function createCategory(req: Request, res: Response, next: NextFunction) {
   try {
@@ -12,6 +12,19 @@ export async function createCategory(req: Request, res: Response, next: NextFunc
 export async function listCategories(req: Request, res: Response, next: NextFunction) {
   try {
     res.json(await svcList(req.ownerContext!.ownerId));
+  } catch (err) { next(err); }
+}
+
+export async function updateCategory(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json(await svcUpdate(req.ownerContext!.ownerId, req.params.id, req.body as UpdateCategoryInput));
+  } catch (err) { next(err); }
+}
+
+export async function deleteCategory(req: Request, res: Response, next: NextFunction) {
+  try {
+    await svcDelete(req.ownerContext!.ownerId, req.params.id);
+    res.status(204).send();
   } catch (err) { next(err); }
 }
 

@@ -17,6 +17,37 @@ The backend SHALL store transaction receipt files in the owner's linked Google D
 - THEN the backend SHALL upload the file to the owner's Drive folder
 - AND it SHALL store the returned Google file ID in the database.
 
+### Requirement: Backend-managed Drive OAuth consent URL
+
+The backend SHALL provide a Google Drive OAuth consent URL for the frontend to start connection without handling refresh tokens directly.
+
+#### Scenario: Consent URL requested
+
+- GIVEN an authenticated user wants to connect Drive
+- WHEN the frontend calls `GET /api/drive/auth-url`
+- THEN the backend SHALL return a Google OAuth URL using the `drive.file` scope
+- AND include offline access parameters needed to obtain a refresh token.
+
+### Requirement: Drive authorization code exchange
+
+The backend SHALL exchange a Google authorization code for tokens server-side and store the refresh token encrypted.
+
+#### Scenario: Authorization code is connected
+
+- GIVEN Google returns an authorization code to the frontend
+- WHEN the frontend calls `POST /api/drive/connect` with the code
+- THEN the backend SHALL exchange the code server-side
+- AND encrypt the refresh token before persistence
+- AND create or persist the Drive root folder
+- AND return success.
+
+#### Scenario: Token exchange fails
+
+- GIVEN the authorization code is invalid or expired
+- WHEN the frontend calls `POST /api/drive/connect`
+- THEN the backend SHALL return an error
+- AND SHALL NOT persist partial Drive credentials.
+
 ### Requirement: Least-privileged Drive scope
 
 The Google Drive integration SHALL request `drive.file` or an equivalently constrained scope.

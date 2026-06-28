@@ -79,3 +79,49 @@ The backend SHALL create default categories for each newly registered credential
 - THEN the backend SHALL create default `EXPENSE` categories named `Comida`, `Transporte`, `Servicios`, and `Ocio`
 - AND SHALL create a default `INCOME` category named `Sueldo`
 - AND SHALL create a default `TRANSFER` category named `Transferencia`.
+
+### Requirement: Category visual metadata
+
+Categories SHALL support optional frontend visual metadata fields `icon` and `color`.
+
+#### Scenario: Category metadata is persisted
+
+- GIVEN an authorized owner or supervisor submits `icon` and `color`
+- WHEN the backend creates or updates a category
+- THEN the backend SHALL persist the values
+- AND return them in category responses.
+
+#### Scenario: Invalid metadata is submitted
+
+- GIVEN `icon` is outside the approved frontend catalog or `color` is not a hex color
+- WHEN the backend validates the request
+- THEN it SHALL reject the request with HTTP 400.
+
+### Requirement: Category update
+
+The backend SHALL allow authorized updates to category `name`, `icon`, and `color` without changing `movementType`.
+
+#### Scenario: Category is updated
+
+- GIVEN a category belongs to the active owner context
+- WHEN an authorized owner or supervisor calls `PUT /api/categories/:id`
+- THEN the backend SHALL update only submitted mutable fields
+- AND preserve the existing `movementType`.
+
+### Requirement: Category deletion policy
+
+The backend SHALL reject deletion of categories that are referenced by financial history.
+
+#### Scenario: Category has transactions
+
+- GIVEN a category is referenced by one or more transactions
+- WHEN an authorized user calls `DELETE /api/categories/:id`
+- THEN the backend SHALL return HTTP 409
+- AND leave the category unchanged.
+
+#### Scenario: Category has no transactions
+
+- GIVEN a category belongs to the active owner context and has no transactions
+- WHEN an authorized owner or supervisor deletes it
+- THEN the backend SHALL delete the category
+- AND return HTTP 204.

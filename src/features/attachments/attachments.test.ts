@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { connectDrive, uploadAttachment, listAttachments, deleteAttachment } from './attachments.service';
+import { getAuthUrl, connectDrive, uploadAttachment, listAttachments, deleteAttachment } from './attachments.service';
 import { AppError } from '../../core/errors';
 
 vi.mock('../../core/database/prisma', () => ({
@@ -20,6 +20,14 @@ vi.mock('../../core/database/prisma', () => ({
   },
 }));
 
+vi.mock('../../core/database/redis', () => ({
+  redis: {
+    set: vi.fn().mockResolvedValue('OK'),
+    get: vi.fn().mockResolvedValue('1'), // state válido por defecto
+    del: vi.fn().mockResolvedValue(1),
+  },
+}));
+
 vi.mock('../../core/security/encryption', () => ({
   encrypt: vi.fn((text) => 'encrypted:' + text),
   decrypt: vi.fn((text) => text.replace('encrypted:', '')),
@@ -29,9 +37,32 @@ vi.mock('../../core/security/driveClient', () => ({
   getDriveClient: vi.fn(),
 }));
 
+let mockGetTokenFn = vi.fn().mockResolvedValue({ tokens: { refresh_token: 'real-refresh-token' } });
+
+vi.mock('googleapis', () => ({
+  google: {
+    auth: {
+      OAuth2: class MockOAuth2 {
+        constructor(_id: string, _secret: string, _uri: string) {}
+        getToken = mockGetTokenFn;
+        generateAuthUrl = vi.fn().mockReturnValue('https://accounts.google.com/o/oauth2/auth?...');
+      },
+    },
+    drive: vi.fn().mockReturnValue({
+      files: {
+        list: vi.fn().mockResolvedValue({ data: { files: [] } }),
+        create: vi.fn().mockResolvedValue({ data: { id: 'folder-123' } }),
+      },
+    }),
+  },
+}));
+
 vi.mock('../../core/config/env', () => ({
   env: {
     ENCRYPTION_KEY: '0'.repeat(64),
+    GOOGLE_CLIENT_ID: 'test-client-id',
+    GOOGLE_CLIENT_SECRET: 'test-client-secret',
+    GOOGLE_REDIRECT_URI: 'http://localhost:5173/auth/drive/callback',
   },
 }));
 
@@ -67,8 +98,25 @@ const fakeTransaction = {
 
 beforeEach(() => vi.clearAllMocks());
 
+describe('getAuthUrl', () => {
+  it('retorna url y state', async () => {
+    const result = await getAuthUrl('user-123');
+    expect(result).toHaveProperty('url');
+    expect(result).toHaveProperty('state');
+    expect(typeof result.url).toBe('string');
+    expect(typeof result.state).toBe('string');
+    expect(result.state.length).toBeGreaterThan(0);
+  });
+
+  it('state es único en cada llamada', async () => {
+    const result1 = await getAuthUrl('user-123');
+    const result2 = await getAuthUrl('user-123');
+    expect(result1.state).not.toBe(result2.state);
+  });
+});
+
 describe('connectDrive', () => {
-  it('cifra el refreshToken antes de persistir', async () => {
+  it('intercambia code por tokens y cifra el refresh_token antes de persistir', async () => {
     mockFindUniqueUser.mockResolvedValue(fakeUser);
     mockGetDriveClient.mockReturnValue({
       files: {
@@ -78,18 +126,38 @@ describe('connectDrive', () => {
     });
     mockUpdateUser.mockResolvedValue({
       ...fakeUser,
-      encryptedGoogleRefreshToken: 'encrypted:refresh-token-123',
+      encryptedGoogleRefreshToken: 'encrypted:real-refresh-token',
       driveFolderId: 'folder-123',
     });
 
-    await connectDrive('user-123', 'refresh-token-123');
+    await connectDrive('user-123', 'auth-code-123', 'valid-state');
 
     const encryptCall = vi.mocked(encrypt).mock.calls[0];
-    expect(encryptCall[0]).toBe('refresh-token-123');
+    expect(encryptCall[0]).toBe('real-refresh-token');
     expect(mockUpdateUser).toHaveBeenCalled();
   });
 
-  it('el refreshToken plaintext no se persiste', async () => {
+  it('lanza 400 si el exchange no devuelve refresh_token', async () => {
+    mockFindUniqueUser.mockResolvedValue(fakeUser);
+    mockGetTokenFn.mockResolvedValueOnce({ tokens: {} });
+
+    await expect(connectDrive('user-123', 'bad-code', 'valid-state')).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringContaining('No se obtuvo refresh token'),
+    });
+  });
+
+  it('lanza 400 si el state OAuth es inválido', async () => {
+    const { redis } = await import('../../core/database/redis');
+    (redis.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
+    await expect(connectDrive('user-123', 'code', 'bad-state')).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringContaining('State OAuth inválido'),
+    });
+  });
+
+  it('el refresh_token plaintext no se persiste', async () => {
     mockFindUniqueUser.mockResolvedValue(fakeUser);
     mockGetDriveClient.mockReturnValue({
       files: {
@@ -102,7 +170,7 @@ describe('connectDrive', () => {
       encryptedGoogleRefreshToken: 'encrypted:my-secret-token',
     });
 
-    await connectDrive('user-123', 'my-secret-token');
+    await connectDrive('user-123', 'auth-code-456', 'valid-state');
 
     const updateCall = mockUpdateUser.mock.calls[0];
     const persistedData = updateCall[0].data;

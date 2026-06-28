@@ -41,6 +41,12 @@ Pause after this checkpoint and report in Spanish.
 
 Pause after this checkpoint and report in Spanish.
 
+## Archive Closeout
+
+- [x] V2 completed successfully and validated against the frontend contract.
+- [x] The implementer completed the assigned work satisfactorily.
+- [x] Remaining frontend-wired roadmap items are deferred to `unblock-frontend-ui-v3`.
+
 ## Fixes post-implementación (aplicados por orquestador)
 
 ### CP1 — fixes

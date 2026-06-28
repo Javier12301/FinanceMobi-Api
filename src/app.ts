@@ -11,6 +11,8 @@ import categoriesRouter from './features/wallets/categories.routes';
 import transactionsRouter from './features/transactions/transactions.routes';
 import attachmentsRouter from './features/attachments/attachments.routes';
 import delegationsRouter from './features/delegations/delegation.routes';
+import budgetsRouter from './features/budgets/budgets.routes';
+import recurringRouter from './features/recurring/recurring.routes';
 
 export const app = express();
 
@@ -80,5 +82,7 @@ app.use('/api/wallets', walletsRouter);
 app.use('/api', categoriesRouter);
 app.use('/api/transactions', transactionsRouter);
 app.use('/api', attachmentsRouter);
+app.use('/api/budgets', budgetsRouter);
+app.use('/api/recurring-rules', recurringRouter);
 
 app.use(errorHandler);

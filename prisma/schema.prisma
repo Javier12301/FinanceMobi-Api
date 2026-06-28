@@ -22,6 +22,10 @@ enum DelegationRole {
   ASESOR
 }
 
+enum Frequency {
+  MONTHLY
+}
+
 // ──────────────────────────────────────────
 // Users & Delegation
 // ──────────────────────────────────────────
@@ -39,6 +43,8 @@ model User {
 
   ownedWallets         Wallet[]             @relation("WalletOwner")
   categories           Category[]
+  budgets              Budget[]
+  recurringRules       RecurringRule[]
   delegationsGiven     UserDelegation[]     @relation("DelegationOwner")
   delegationsReceived  UserDelegation[]     @relation("DelegationDelegated")
   transactionHistories TransactionHistory[]
@@ -80,10 +86,12 @@ model Wallet {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  owner             User          @relation("WalletOwner", fields: [ownerId], references: [id])
-  type              WalletType    @relation(fields: [typeId], references: [id])
-  transactions      Transaction[] @relation("SourceWallet")
-  incomingTransfers Transaction[] @relation("DestinationWallet")
+  owner                  User          @relation("WalletOwner", fields: [ownerId], references: [id])
+  type                   WalletType    @relation(fields: [typeId], references: [id])
+  transactions           Transaction[] @relation("SourceWallet")
+  incomingTransfers      Transaction[] @relation("DestinationWallet")
+  recurringRules         RecurringRule[] @relation("RuleSourceWallet")
+  incomingRecurringRules RecurringRule[] @relation("RuleDestinationWallet")
 }
 
 // ──────────────────────────────────────────
@@ -95,10 +103,33 @@ model Category {
   ownerId      String
   movementType MovementType
   name         String
+  icon         String?
+  color        String?
   createdAt    DateTime     @default(now())
 
-  owner        User          @relation(fields: [ownerId], references: [id])
-  transactions Transaction[]
+  owner          User          @relation(fields: [ownerId], references: [id])
+  transactions   Transaction[]
+  budgets        Budget[]
+  recurringRules RecurringRule[]
+}
+
+// ──────────────────────────────────────────
+// Budgets
+// ──────────────────────────────────────────
+
+model Budget {
+  id         String   @id @default(uuid())
+  ownerId    String
+  categoryId String
+  month      String   // formato "YYYY-MM"
+  limit      Decimal  @db.Decimal(15, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  owner    User     @relation(fields: [ownerId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([ownerId, categoryId, month])
 }
 
 // ──────────────────────────────────────────
@@ -146,4 +177,33 @@ model TransactionAttachment {
   uploadedAt    DateTime @default(now())
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
+}
+
+// ──────────────────────────────────────────
+// Recurring Rules
+// ──────────────────────────────────────────
+
+model RecurringRule {
+  id                  String       @id @default(uuid())
+  ownerId             String
+  walletId            String
+  destinationWalletId String?
+  categoryId          String
+  movementType        MovementType
+  amount              Decimal      @db.Decimal(15, 2)
+  description         String?
+  dayOfMonth          Int
+  frequency           Frequency    @default(MONTHLY)
+  autoPost            Boolean      @default(false)
+  startDate           DateTime
+  endDate             DateTime?
+  nextRunDate         DateTime
+  active              Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  owner             User     @relation(fields: [ownerId], references: [id])
+  wallet            Wallet   @relation("RuleSourceWallet", fields: [walletId], references: [id])
+  destinationWallet Wallet?  @relation("RuleDestinationWallet", fields: [destinationWalletId], references: [id])
+  category          Category @relation(fields: [categoryId], references: [id])
 }
