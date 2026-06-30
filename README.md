@@ -173,8 +173,9 @@ npm run build
 cd ../Backend
 docker compose -f docker-compose.prod.yml up -d --build
 
-# 3. (primera vez) crear tu cuenta CREADOR y datos base
-docker compose -f docker-compose.prod.yml exec backend npm run db:seed
+# 3. (primera vez) crear tu cuenta CREADOR y datos base.
+#    La imagen de prod no trae tsx (es devDependency); npx lo baja al vuelo.
+docker compose -f docker-compose.prod.yml exec backend npx -y tsx prisma/seed.ts
 
 # 4. Exponer Caddy (:80) a la tailnet con HTTPS automático
 tailscale serve --bg 80

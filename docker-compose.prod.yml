@@ -1,9 +1,9 @@
 services:
   mysql:
-    image: mysql:8.0
+    image: mysql:8.4
     restart: unless-stopped
-    # ponytail: freno de RAM para VPS de 2 GB; subir si migrás a uno más grande
-    command: --innodb-buffer-pool-size=256M
+    # ponytail: sin freno de RAM — corre en PC de 16 GB. Si migrás a VPS chico (2 GB),
+    # agregá: command: --innodb-buffer-pool-size=256M
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -11,7 +11,19 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
-    # ponytail: sin puerto expuesto — solo accesible internamente por la red Docker
+    # ╔══════════════════════════════════════════════════════════════════════╗
+    # ║  ⚠️  PUERTO MYSQL EXPUESTO — SOLO PARA TESTING EN LA PC LOCAL          ║
+    # ║                                                                        ║
+    # ║  Bindeado a 127.0.0.1 → accesible SOLO desde esta PC (no por Tailscale ║
+    # ║  ni por la LAN). Sirve para conectar DBeaver / Workbench a            ║
+    # ║  127.0.0.1:3306  (usuario: admin / pass: admin / base: financevier).  ║
+    # ║                                                                        ║
+    # ║  👉 ANTES DE PASAR A VPS: BORRAR ESTAS DOS LÍNEAS 'ports'.            ║
+    # ║     En el VPS la DB no debe tener ningún puerto publicado — solo se    ║
+    # ║     habla por la red interna de Docker (host: mysql:3306).            ║
+    # ╚══════════════════════════════════════════════════════════════════════╝
+    ports:
+      - "127.0.0.1:3306:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
@@ -46,8 +58,9 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      # wget viene en node:22-alpine (busybox); curl no está en la imagen
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      # wget viene en node:22-alpine (busybox); curl no está en la imagen.
+      # 127.0.0.1 explícito: localhost resolvería a ::1 (IPv6) y Node escucha en IPv4.
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
       interval: 15s
       timeout: 5s
       retries: 3

@@ -6,7 +6,10 @@ import { redis } from './core/database/redis';
 async function main() {
   if (redis.status === 'wait') await redis.connect();
 
-  const host = process.argv.includes('--lan') ? '0.0.0.0' : '127.0.0.1';
+  // En Docker/producción hay que escuchar en 0.0.0.0 para que Caddy y el puerto
+  // publicado lleguen al backend; en dev local queda en loopback salvo --lan.
+  const host =
+    process.argv.includes('--lan') || env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1';
 
   app.listen(env.PORT, host, () => {
     console.log(`[server] listening on ${host}:${env.PORT} (${env.NODE_ENV})`);
