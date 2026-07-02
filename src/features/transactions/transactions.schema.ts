@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const createTransactionSchema = z.object({
+  // id opcional generado por el cliente (alta offline): hace el POST idempotente ante reintentos.
+  id: z.string().uuid().optional(),
   walletId: z.string().uuid(),
   destinationWalletId: z.string().uuid().optional(),
   categoryId: z.string().uuid(),

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `Debt` ADD COLUMN `interestPaid` DECIMAL(15, 2) NOT NULL DEFAULT 0;

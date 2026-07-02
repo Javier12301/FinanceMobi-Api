@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { listDebts, createDebt, updateDebt, deleteDebt, payDebt } from './debts.service';
+import { listDebts, createDebt, updateDebt, deleteDebt, payDebt, splitPayment } from './debts.service';
 import { AppError } from '../../core/errors';
 
 vi.mock('../../core/database/prisma', () => ({
@@ -49,6 +49,7 @@ const fakeDebt = {
   categoryId: null,
   principal: { toString: () => '120000.00' },
   remaining: { toString: () => '120000.00' },
+  interestPaid: { toString: () => '0.00' },
   recurringRuleId: null,
   installmentsTotal: 12,
   installmentsPaid: 0,
@@ -60,6 +61,32 @@ const fakeDebt = {
 };
 
 beforeEach(() => vi.clearAllMocks());
+
+describe('splitPayment (capital vs recargo)', () => {
+  it('pago exacto: todo va a capital, sin recargo', () => {
+    // 120000 / 12 restantes = 10000 proyectado
+    expect(splitPayment(120000, 12, 10000)).toEqual({ capital: 10000, interest: 0, newRemaining: 110000 });
+  });
+
+  it('sobreprecio: el excedente sobre lo proyectado es recargo y NO baja capital más rápido', () => {
+    // cuota proyectada 10000, paga 12500 → capital 10000, recargo 2500
+    expect(splitPayment(120000, 12, 12500)).toEqual({ capital: 10000, interest: 2500, newRemaining: 110000 });
+  });
+
+  it('pago parcial: baja capital solo por lo pagado, sin recargo', () => {
+    expect(splitPayment(120000, 12, 6000)).toEqual({ capital: 6000, interest: 0, newRemaining: 114000 });
+  });
+
+  it('última cuota con recargo: salda capital y registra el excedente', () => {
+    // resta 1 cuota, saldo 10000; paga 13000 → capital 10000 (salda), recargo 3000
+    expect(splitPayment(10000, 1, 13000)).toEqual({ capital: 10000, interest: 3000, newRemaining: 0 });
+  });
+
+  it('sin plan de cuotas (restantes<=0 tratado como pago único)', () => {
+    // deuda sin cuotas: restantes 1 → proyectado = saldo entero
+    expect(splitPayment(5000, 1, 7000)).toEqual({ capital: 5000, interest: 2000, newRemaining: 0 });
+  });
+});
 
 describe('listDebts', () => {
   it('retorna deudas del owner serializadas con moneda como string', async () => {
@@ -223,6 +250,41 @@ describe('payDebt', () => {
     expect(tx.transaction.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ debtId: 'debt-1' }) }),
     );
+  });
+
+  it('pago con recargo: debita la billetera por el monto TOTAL pero baja capital solo la cuota', async () => {
+    const tx = makePayTx();
+    mockTransaction.mockImplementation(async (fn: Function) => fn(tx));
+    // cuota proyectada = 120000/12 = 10000; paga 12500 → capital 10000, recargo 2500
+    await payDebt('debt-1', { walletId: 'w1', amount: 12500 }, ownerCtx, 'user-1');
+    // La transacción (gasto en billetera) es por el monto total real
+    expect(tx.transaction.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 12500 }) }),
+    );
+    // La deuda baja capital solo 10000 (remaining 110000) y acumula 2500 de recargo
+    expect(tx.debt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ remaining: 110000, interestPaid: 2500, installmentsPaid: 1 }) }),
+    );
+  });
+
+  it('permite pagar más que el saldo capital (mora): el excedente es recargo, no capital', async () => {
+    const tx = makePayTx();
+    tx.debt.findUnique = vi.fn().mockResolvedValue({
+      ...fakeDebt, remaining: { toString: () => '10000' }, installmentsTotal: 1, installmentsPaid: 0,
+    });
+    mockTransaction.mockImplementation(async (fn: Function) => fn(tx));
+    await payDebt('debt-1', { walletId: 'w1', amount: 13000 }, ownerCtx, 'user-1');
+    expect(tx.debt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ remaining: 0, interestPaid: 3000, status: 'PAID' }) }),
+    );
+  });
+
+  it('serializa interestPaid como string', async () => {
+    const tx = makePayTx();
+    tx.debt.update = vi.fn().mockResolvedValue({ ...fakeDebt, interestPaid: { toString: () => '2500.00' } });
+    mockTransaction.mockImplementation(async (fn: Function) => fn(tx));
+    const result = await payDebt('debt-1', { walletId: 'w1', amount: 12500 }, ownerCtx, 'user-1');
+    expect(result.interestPaid).toBe('2500.00');
   });
 
   it('marca la deuda como PAID cuando remaining llega a 0', async () => {

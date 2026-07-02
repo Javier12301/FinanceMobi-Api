@@ -166,6 +166,7 @@ async function confirmRuleAtomically(
         description: rule.description,
         date: now,
         movementType: rule.movementType,
+        recurringRuleId: rule.id, // vincula el cobro con su regla (permite verlo/deshacerlo desde la edición)
       },
     });
 

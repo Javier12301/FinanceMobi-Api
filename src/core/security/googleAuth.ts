@@ -4,11 +4,15 @@ import { AppError } from '../errors';
 
 const client = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
+// Audiencias aceptadas: la web y —si está configurada— la de Android (APK).
+// El id_token nativo del APK trae un aud distinto al de la web, por eso aceptamos ambas.
+const acceptedAudiences = [env.GOOGLE_CLIENT_ID, env.GOOGLE_ANDROID_CLIENT_ID].filter(Boolean);
+
 export async function verifyGoogleIdToken(idToken: string): Promise<{ sub: string; email: string }> {
   try {
     const ticket = await client.verifyIdToken({
       idToken,
-      audience: env.GOOGLE_CLIENT_ID,
+      audience: acceptedAudiences,
     });
     const payload = ticket.getPayload();
     if (!payload?.sub || !payload?.email) throw new Error('Payload de Google incompleto');

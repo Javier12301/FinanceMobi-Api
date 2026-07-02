@@ -15,6 +15,13 @@ export async function createTransactionInTx(
   ownerContext: OwnerContext,
   userId: string,
 ) {
+  // Idempotencia: si el cliente reenvía un alta ya aplicada (mismo id), devolver la existente
+  // sin re-crear ni re-aplicar el balance. Cubre el replay del outbox offline.
+  if (input.id) {
+    const existing = await tx.transaction.findUnique({ where: { id: input.id } });
+    if (existing) return existing;
+  }
+
   // Validar existencia y ownership antes de tomar locks
   const walletCheck = await tx.wallet.findUnique({ where: { id: input.walletId }, select: { id: true, ownerId: true } });
   if (!walletCheck || walletCheck.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Billetera no encontrada');
@@ -58,6 +65,7 @@ export async function createTransactionInTx(
 
   const transaction = await tx.transaction.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       walletId: input.walletId,
       destinationWalletId: input.destinationWalletId,
       categoryId: input.categoryId,

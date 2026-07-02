@@ -13,7 +13,23 @@ function serializeDebt(debt: any) {
     ...debt,
     principal: debt.principal.toString(),
     remaining: debt.remaining.toString(),
+    interestPaid: (debt.interestPaid ?? 0).toString(),
   };
+}
+
+/**
+ * Reparte un pago entre capital (lo pactado) y recargo/interés (el excedente).
+ * - `projected` = saldo capital / cuotas restantes → lo que "debería" costar esta cuota.
+ * - El capital nunca baja más rápido que lo proyectado; lo que pagues de más es recargo.
+ * - Pagar de menos (cuota parcial) baja el capital solo por lo pagado, sin recargo.
+ * Función pura para poder testear la aritmética sin mocks de Prisma.
+ */
+export function splitPayment(remaining: number, restantes: number, amount: number) {
+  const projected = restantes > 0 ? remaining / restantes : remaining;
+  const capital = Math.min(amount, projected);
+  const interest = Math.max(0, amount - capital);
+  const newRemaining = Math.max(0, remaining - capital);
+  return { capital, interest, newRemaining };
 }
 
 async function findOwnedDebt(id: string, ownerId: string) {
@@ -133,7 +149,8 @@ export async function payDebtInTx(
   const debt = await tx.debt.findUnique({ where: { id: debtId } });
   if (!debt || debt.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Deuda no encontrada');
   if (debt.status === 'PAID') throw new AppError(409, 'La deuda ya está saldada');
-  if (amount > Number(debt.remaining)) throw new AppError(400, 'El monto supera el saldo pendiente de la deuda');
+  // No hay guard `amount > remaining`: el monto puede superar el saldo capital porque el
+  // excedente es recargo/interés (mora, ajuste bancario), no capital.
 
   let categoryId = debt.categoryId;
   if (!categoryId) {
@@ -142,17 +159,24 @@ export async function payDebtInTx(
     categoryId = cat.id;
   }
 
+  const newInstallmentsPaid = (debt.installmentsPaid ?? 0) + 1;
+
   const movementType = debt.direction === 'I_OWE' ? 'EXPENSE' : 'INCOME';
   const description = customDescription
     ?? (debt.installmentsTotal
-      ? `Cuota ${(debt.installmentsPaid ?? 0) + 1}/${debt.installmentsTotal} — ${debt.counterparty}`
+      ? `Cuota ${newInstallmentsPaid}/${debt.installmentsTotal} — ${debt.counterparty}`
       : `Pago — ${debt.counterparty}`);
 
+  // La billetera se debita por el MONTO TOTAL real (capital + recargo).
   await createTransactionInTx(tx, { walletId, categoryId, amount, movementType, date: new Date().toISOString(), description, debtId }, ownerContext, userId);
 
-  const newRemaining = Math.max(0, Number(debt.remaining) - amount);
-  const newInstallmentsPaid = (debt.installmentsPaid ?? 0) + 1;
-  const isPaid = newRemaining === 0;
+  // Reparto capital/recargo. Cuotas restantes = total - ya pagadas (antes de este pago); sin plan de cuotas → 1.
+  const restantes = debt.installmentsTotal ? Math.max(1, debt.installmentsTotal - (debt.installmentsPaid ?? 0)) : 1;
+  const { interest, newRemaining } = splitPayment(Number(debt.remaining), restantes, amount);
+  const newInterestPaid = Number(debt.interestPaid ?? 0) + interest;
+
+  // Cierra la deuda al saldar el capital o al cubrir todas las cuotas pactadas.
+  const isPaid = newRemaining === 0 || (!!debt.installmentsTotal && newInstallmentsPaid >= debt.installmentsTotal);
 
   let newDueDate = debt.dueDate;
   if (!isPaid && debt.dueDate && debt.installmentsTotal) {
@@ -163,7 +187,13 @@ export async function payDebtInTx(
 
   return tx.debt.update({
     where: { id: debtId },
-    data: { remaining: newRemaining, installmentsPaid: newInstallmentsPaid, dueDate: newDueDate, status: isPaid ? 'PAID' : 'ACTIVE' },
+    data: {
+      remaining: isPaid ? 0 : newRemaining,
+      interestPaid: newInterestPaid,
+      installmentsPaid: newInstallmentsPaid,
+      dueDate: newDueDate,
+      status: isPaid ? 'PAID' : 'ACTIVE',
+    },
   });
 }
 
