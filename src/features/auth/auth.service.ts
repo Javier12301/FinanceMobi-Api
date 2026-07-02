@@ -49,8 +49,12 @@ export async function loginWithGoogle(idToken: string) {
     // Google SSO también es un alta: si el registro está cerrado, no creamos cuenta.
     // Los usuarios existentes (incluido el CREADOR) siguen entrando normalmente.
     if (!env.REGISTRATION_ENABLED) throw new AppError(403, REGISTRATION_CLOSED_ERROR);
-    user = await prisma.user.create({
-      data: { googleId, email, name: email.split('@')[0] },
+    user = await prisma.$transaction(async (tx) => {
+      const newUser = await tx.user.create({
+        data: { googleId, email, name: email.split('@')[0] },
+      });
+      await seedDefaultUserData(tx, newUser.id);
+      return newUser;
     });
   }
 
@@ -69,6 +73,26 @@ const DEFAULT_CATEGORIES = [
   { movementType: 'EXPENSE', name: 'Otros',        icon: 'tag',       color: '#6366F1' },
 ] as const;
 
+// ponytail: extracted to share between credentials and Google SSO flows
+async function seedDefaultUserData(tx: any, userId: string) {
+  await tx.category.createMany({
+    data: DEFAULT_CATEGORIES.map((cat) => ({
+      ownerId: userId,
+      movementType: cat.movementType,
+      name: cat.name,
+      icon: cat.icon,
+      color: cat.color,
+    })),
+  });
+
+  const cashType = await tx.walletType.findFirst({ where: { name: 'CASH' } });
+  if (!cashType) throw new AppError(500, 'WalletType CASH no encontrado');
+
+  await tx.wallet.create({
+    data: { ownerId: userId, typeId: cashType.id, name: 'Efectivo', initialBalance: 0, currentBalance: 0 },
+  });
+}
+
 export async function registerWithCredentials(name: string, email: string, password: string) {
   if (!env.REGISTRATION_ENABLED) throw new AppError(403, REGISTRATION_CLOSED_ERROR);
 
@@ -84,23 +108,7 @@ export async function registerWithCredentials(name: string, email: string, passw
         data: { name, email, passwordHash },
       });
 
-      await tx.category.createMany({
-        data: DEFAULT_CATEGORIES.map((cat) => ({
-          ownerId: newUser.id,
-          movementType: cat.movementType,
-          name: cat.name,
-          icon: cat.icon,
-          color: cat.color,
-        })),
-      });
-
-      const cashType = await tx.walletType.findFirst({ where: { name: 'CASH' } });
-      if (!cashType) throw new AppError(500, 'WalletType CASH no encontrado');
-
-      await tx.wallet.create({
-        data: { ownerId: newUser.id, typeId: cashType.id, name: 'Efectivo', initialBalance: 0, currentBalance: 0 },
-      });
-
+      await seedDefaultUserData(tx, newUser.id);
       return newUser;
     });
 
