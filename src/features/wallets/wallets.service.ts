@@ -20,10 +20,19 @@ export async function listWallets(ownerId: string) {
 }
 
 export async function updateWallet(walletId: string, input: UpdateWalletInput) {
-  return prisma.wallet.update({
-    where: { id: walletId },
-    data: { name: input.name, typeId: input.typeId, description: input.description },
-  });
+  const data: any = { name: input.name, typeId: input.typeId, description: input.description };
+
+  // Corregir saldo inicial: el saldo actual se mueve la misma diferencia para no perder
+  // el efecto de los movimientos ya registrados (currentBalance = initial + movimientos).
+  if (input.initialBalance !== undefined) {
+    const wallet = await prisma.wallet.findUnique({ where: { id: walletId } });
+    if (!wallet) throw new AppError(404, 'Billetera no encontrada');
+    const delta = input.initialBalance - Number(wallet.initialBalance);
+    data.initialBalance = input.initialBalance;
+    data.currentBalance = Number(wallet.currentBalance) + delta;
+  }
+
+  return prisma.wallet.update({ where: { id: walletId }, data });
 }
 
 export async function deleteWallet(walletId: string) {

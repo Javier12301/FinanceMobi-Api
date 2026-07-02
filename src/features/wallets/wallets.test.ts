@@ -35,6 +35,7 @@ import { prisma } from '../../core/database/prisma';
 
 const mockCreate = prisma.wallet.create as ReturnType<typeof vi.fn>;
 const mockFindMany = prisma.wallet.findMany as ReturnType<typeof vi.fn>;
+const mockFindUnique = prisma.wallet.findUnique as ReturnType<typeof vi.fn>;
 const mockUpdate = prisma.wallet.update as ReturnType<typeof vi.fn>;
 const mockDelete = prisma.wallet.delete as ReturnType<typeof vi.fn>;
 const mockTransactionCount = (prisma.transaction as any).count as ReturnType<typeof vi.fn>;
@@ -133,6 +134,19 @@ describe('Wallets Service', () => {
       const callData = mockUpdate.mock.calls[0][0].data;
       expect(callData).not.toHaveProperty('initialBalance');
       expect(callData).not.toHaveProperty('currentBalance');
+    });
+
+    it('al corregir initialBalance ajusta currentBalance por la misma diferencia', async () => {
+      // saldo inicial 500, actual 800 (→ 300 de movimientos). Corregir a 1000 → +500 → actual 1300.
+      mockFindUnique.mockResolvedValue({ id: 'wallet-1', initialBalance: 500, currentBalance: 800 });
+      mockUpdate.mockResolvedValue({ id: 'wallet-1' });
+
+      await updateWallet('wallet-1', { initialBalance: 1000 });
+
+      expect(mockUpdate).toHaveBeenCalledWith({
+        where: { id: 'wallet-1' },
+        data: expect.objectContaining({ initialBalance: 1000, currentBalance: 1300 }),
+      });
     });
   });
 

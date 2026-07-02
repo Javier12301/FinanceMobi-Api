@@ -11,6 +11,9 @@ export const updateWalletSchema = z.object({
   name: z.string().min(1).optional(),
   typeId: z.number().int().positive().optional(),
   description: z.string().optional(),
+  // Corregir el saldo inicial: ajusta el saldo actual por la misma diferencia,
+  // preservando el efecto de los movimientos ya cargados.
+  initialBalance: z.number().min(0).optional(),
 });
 
 const iconEnum = z.enum(['utensils', 'cart', 'bus', 'car', 'home', 'lightbulb', 'wifi', 'phone', 'drama', 'dumbbell', 'health', 'education', 'shirt', 'gift', 'plane', 'receipt', 'card', 'wallet', 'piggy', 'tag']);

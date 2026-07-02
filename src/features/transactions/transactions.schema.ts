@@ -23,6 +23,7 @@ export const updateTransactionSchema = z.object({
 export const listTransactionFiltersSchema = z.object({
   walletId: z.string().uuid().optional(),
   categoryId: z.string().uuid().optional(),
+  debtId: z.string().uuid().optional(),
   dateFrom: z.string().datetime().optional(),
   dateTo: z.string().datetime().optional(),
   // V4: filtros adicionales

@@ -107,6 +107,7 @@ export async function listTransactions(ownerId: string, filters?: ListTransactio
     deletedAt: null,
   };
   if (filters?.categoryId) where.categoryId = filters.categoryId;
+  if (filters?.debtId) where.debtId = filters.debtId;
   if (filters?.type) where.movementType = filters.type;
 
   // Soporte V3 (dateFrom/dateTo) y V4 (from/to) — ambos alimentan where.date
