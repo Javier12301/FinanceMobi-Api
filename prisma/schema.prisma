@@ -53,6 +53,20 @@ model User {
   debts                    Debt[]
   notificationDevices      NotificationDevice[]
   notificationPreference   NotificationPreference?
+  dailyCheckIns            UserDailyCheckIn[]
+}
+
+// Entrada diaria del usuario a la app: base de la racha real (un registro por día).
+model UserDailyCheckIn {
+  id          String   @id @default(uuid())
+  userId      String
+  checkInDate DateTime @db.Date
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, checkInDate])
+  @@index([userId])
 }
 
 model UserDelegation {

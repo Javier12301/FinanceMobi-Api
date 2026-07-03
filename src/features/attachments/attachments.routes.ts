@@ -7,6 +7,7 @@ import { AppError } from '../../core/errors';
 import {
   getAuthUrlHandler,
   connectDriveHandler,
+  disconnectDriveHandler,
   uploadAttachmentHandler,
   listAttachmentsHandler,
   deleteAttachmentHandler
@@ -26,6 +27,7 @@ const router = Router();
 
 router.get('/drive/auth-url', authMiddleware, requireOwnerContext, getAuthUrlHandler);
 router.post('/drive/connect', authMiddleware, requireOwnerContext, connectDriveHandler);
+router.delete('/drive', authMiddleware, requireOwnerContext, disconnectDriveHandler);
 
 router.post(
   '/transactions/:transactionId/attachments',

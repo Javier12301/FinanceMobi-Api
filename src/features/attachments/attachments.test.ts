@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getAuthUrl, connectDrive, uploadAttachment, listAttachments, deleteAttachment } from './attachments.service';
+import { getAuthUrl, connectDrive, disconnectDrive, uploadAttachment, listAttachments, deleteAttachment } from './attachments.service';
 import { AppError } from '../../core/errors';
 
 vi.mock('../../core/database/prisma', () => ({
@@ -409,5 +409,24 @@ describe('deleteAttachment', () => {
     );
 
     expect(mockDbDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe('disconnectDrive', () => {
+  it('limpia el refresh token cifrado y la carpeta raíz del usuario', async () => {
+    mockFindUniqueUser.mockResolvedValue({ ...fakeUser, encryptedGoogleRefreshToken: 'encrypted:x', driveFolderId: 'folder-123' });
+    mockUpdateUser.mockResolvedValue({ ...fakeUser });
+
+    await disconnectDrive('user-123');
+
+    expect(mockUpdateUser).toHaveBeenCalledWith({
+      where: { id: 'user-123' },
+      data: { encryptedGoogleRefreshToken: null, driveFolderId: null },
+    });
+  });
+
+  it('lanza 404 si el usuario no existe', async () => {
+    mockFindUniqueUser.mockResolvedValue(null);
+    await expect(disconnectDrive('nope')).rejects.toMatchObject({ statusCode: 404 });
   });
 });

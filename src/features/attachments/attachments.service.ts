@@ -75,6 +75,16 @@ export async function connectDrive(userId: string, code: string, state: string) 
   });
 }
 
+/** Desconecta Google Drive: limpia el refresh token cifrado y la carpeta raíz del usuario. */
+export async function disconnectDrive(userId: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError(404, 'Usuario no encontrado');
+  await prisma.user.update({
+    where: { id: userId },
+    data: { encryptedGoogleRefreshToken: null, driveFolderId: null },
+  });
+}
+
 export async function uploadAttachment(
   transactionId: string,
   ownerId: string,
