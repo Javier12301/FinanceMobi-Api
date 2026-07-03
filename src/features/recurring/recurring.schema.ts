@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const createRecurringRuleSchema = z.object({
+  // id opcional del cliente (alta offline): idempotencia del replay del outbox.
+  id: z.string().uuid().optional(),
   walletId: z.string().uuid(),
   destinationWalletId: z.string().uuid().nullable().optional(),
   categoryId: z.string().uuid(),

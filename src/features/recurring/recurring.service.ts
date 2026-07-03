@@ -36,6 +36,12 @@ export async function listRules(ownerId: string) {
 }
 
 export async function createRule(ownerId: string, input: CreateRecurringRuleInput) {
+  // Idempotencia: replay del outbox offline.
+  if (input.id) {
+    const existing = await prisma.recurringRule.findUnique({ where: { id: input.id } });
+    if (existing && existing.ownerId === ownerId) return existing;
+  }
+
   const wallet = await prisma.wallet.findUnique({ where: { id: input.walletId } });
   if (!wallet || wallet.ownerId !== ownerId) throw new AppError(404, 'Billetera no encontrada');
 
@@ -64,6 +70,7 @@ export async function createRule(ownerId: string, input: CreateRecurringRuleInpu
 
   return prisma.recurringRule.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       ownerId,
       walletId: input.walletId,
       destinationWalletId: input.destinationWalletId,

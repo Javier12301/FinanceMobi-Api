@@ -203,6 +203,24 @@ describe('Recurring Rules Service', () => {
 
       await expect(createRule('owner-1', input)).rejects.toThrow(AppError);
     });
+
+    it('idempotente: si el id ya existe, devuelve la regla sin re-crear', async () => {
+      mockRecurringRuleFindUnique.mockResolvedValue({ id: 'rule-cliente-1', ownerId: 'owner-1' });
+
+      const result = await createRule('owner-1', {
+        id: 'rule-cliente-1',
+        walletId: '11111111-1111-1111-1111-111111111111',
+        categoryId: '22222222-2222-2222-2222-222222222222',
+        movementType: 'EXPENSE',
+        amount: 1000,
+        dayOfMonth: 5,
+        autoPost: false,
+        startDate: '2026-07-01T00:00:00.000Z',
+      } as any);
+
+      expect(mockRecurringRuleCreate).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ id: 'rule-cliente-1' });
+    });
   });
 
   describe('updateRule', () => {
