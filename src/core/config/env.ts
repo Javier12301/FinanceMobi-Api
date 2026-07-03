@@ -6,7 +6,9 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
-  JWT_EXPIRES_IN: z.string().default('7d'),
+  // 90d: los clientes mobile operan offline con el server apagado; una sesión corta forzaría
+  // re-login cada vez que el dueño prende la PC. Redis persiste la sesión (docker-compose: appendonly).
+  JWT_EXPIRES_IN: z.string().default('90d'),
   // AES-256-GCM key: 32 bytes como 64 chars hexadecimales
   ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'ENCRYPTION_KEY debe ser exactamente 64 caracteres hexadecimales'),
   GOOGLE_CLIENT_ID: z.string().min(1),
