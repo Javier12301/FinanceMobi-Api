@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const createDebtSchema = z.object({
+  // id opcional del cliente (alta offline): hace el POST idempotente ante el replay del outbox.
+  id: z.string().uuid().optional(),
   direction: z.enum(['I_OWE', 'OWED_TO_ME']),
   counterparty: z.string().min(1),
   principal: z.number().positive(),

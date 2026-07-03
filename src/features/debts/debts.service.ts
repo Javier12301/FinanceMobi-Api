@@ -44,6 +44,12 @@ export async function listDebts(ownerContext: OwnerContext) {
 }
 
 export async function createDebt(input: CreateDebtInput, ownerContext: OwnerContext) {
+  // Idempotencia: replay del outbox offline. Si el id ya existe, devolver sin re-crear.
+  if (input.id) {
+    const existing = await prisma.debt.findUnique({ where: { id: input.id } });
+    if (existing && existing.ownerId === ownerContext.ownerId) return serializeDebt(existing);
+  }
+
   if (input.categoryId) {
     const cat = await prisma.category.findUnique({ where: { id: input.categoryId } });
     if (!cat || cat.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Categoría no encontrada');
@@ -64,6 +70,7 @@ export async function createDebt(input: CreateDebtInput, ownerContext: OwnerCont
 
       const debt = await tx.debt.create({
         data: {
+          ...(input.id ? { id: input.id } : {}),
           ownerId: ownerContext.ownerId,
           direction: input.direction,
           counterparty: input.counterparty,
@@ -103,6 +110,7 @@ export async function createDebt(input: CreateDebtInput, ownerContext: OwnerCont
 
   const debt = await prisma.debt.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       ownerId: ownerContext.ownerId,
       direction: input.direction,
       counterparty: input.counterparty,

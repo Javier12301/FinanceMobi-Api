@@ -115,6 +115,16 @@ describe('createDebt', () => {
     expect(typeof result.principal).toBe('string');
     expect(typeof result.remaining).toBe('string');
   });
+
+  it('idempotente: si el id ya existe, devuelve la deuda sin re-crear', async () => {
+    mockDebtFindUnique.mockResolvedValue({ ...fakeDebt, id: 'debt-cliente-1' });
+    const result = await createDebt(
+      { id: 'debt-cliente-1', direction: 'I_OWE', counterparty: 'X', principal: 5000 },
+      ownerCtx,
+    );
+    expect(mockDebtCreate).not.toHaveBeenCalled();
+    expect(result.principal).toBe('120000.00'); // serializado desde fakeDebt
+  });
 });
 
 describe('createDebt con installmentsTotal + walletId', () => {
