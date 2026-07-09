@@ -18,6 +18,10 @@ export const updateTransactionSchema = z.object({
   amount: z.number().positive().optional(),
   description: z.string().optional(),
   date: z.string().datetime().optional(),
+  // Permiten corregir la billetera de un movimiento (el service reconcilia el saldo entre la
+  // billetera vieja y la nueva). destinationWalletId solo aplica a TRANSFER.
+  walletId: z.string().uuid().optional(),
+  destinationWalletId: z.string().uuid().optional(),
 });
 
 export const listTransactionFiltersSchema = z.object({

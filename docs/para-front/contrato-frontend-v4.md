@@ -362,6 +362,17 @@ Sin cambios en la interfaz. La respuesta sigue igual. Lo nuevo ocurre internamen
 
 Sin cambios en la shape del objeto. Los filtros son adición de query params opcionales.
 
+**Editar billetera (nuevo):** `PUT /api/transactions/:id` ahora acepta también `walletId` y
+`destinationWalletId` (ambos opcionales) además de `categoryId`, `amount`, `description`, `date`.
+Permite corregir la billetera de un movimiento: el backend revierte el impacto de saldo en la(s)
+billetera(s) original(es) y lo aplica en la(s) nueva(s), atómicamente y con lock de filas. El
+`movementType` sigue siendo inmutable (para cambiarlo, borrar y recrear). Reglas:
+- `destinationWalletId` solo aplica a TRANSFER; enviarlo en INCOME/EXPENSE → `400`.
+- En TRANSFER, origen ≠ destino → `400` si coinciden.
+- Toda billetera nueva debe pertenecer al owner activo → `404` si no.
+- Idempotente ante replay (setea valores absolutos revirtiendo contra el estado persistido), apto
+  para reenvío desde el outbox offline.
+
 ---
 
 ## 8. Errores comunes — referencia rápida

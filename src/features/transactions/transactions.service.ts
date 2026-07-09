@@ -148,12 +148,24 @@ export async function updateTransaction(
     const oldTx = await tx.transaction.findFirst({ where: { id: transactionId, deletedAt: null } });
     if (!oldTx) throw new AppError(404, 'Transacción no encontrada');
 
-    const wallet = await tx.wallet.findUnique({ where: { id: oldTx.walletId } });
-    if (!wallet || wallet.ownerId !== ownerContext.ownerId) {
-      throw new AppError(404, 'Billetera no encontrada');
+    // El movementType es inmutable en edición. Valores finales: lo que no viene en input queda igual.
+    const movementType = oldTx.movementType;
+    const finalAmount = input.amount ?? Number(oldTx.amount);
+    const finalWalletId = input.walletId ?? oldTx.walletId;
+    const finalDestId =
+      movementType === 'TRANSFER' ? (input.destinationWalletId ?? oldTx.destinationWalletId) : null;
+
+    // Validaciones de forma
+    if (movementType === 'TRANSFER') {
+      if (!finalDestId) throw new AppError(400, 'destinationWalletId requerido para TRANSFER');
+      if (finalDestId === finalWalletId) {
+        throw new AppError(400, 'La billetera origen y destino no pueden ser la misma');
+      }
+    } else if (input.destinationWalletId) {
+      throw new AppError(400, 'destinationWalletId solo aplica a TRANSFER');
     }
 
-    // Fix 4: validar ownership del nuevo categoryId si se cambia
+    // Ownership del nuevo categoryId si se cambia
     if (input.categoryId) {
       const cat = await tx.category.findUnique({ where: { id: input.categoryId } });
       if (!cat || cat.ownerId !== ownerContext.ownerId) {
@@ -161,32 +173,54 @@ export async function updateTransaction(
       }
     }
 
-    // Fix 2: usar tx.$queryRaw para que el lock sea parte de la transacción
-    await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${oldTx.walletId} FOR UPDATE`;
+    // Billeteras afectadas = viejas (a revertir) + nuevas (a aplicar), únicas.
+    const affectedIds = Array.from(
+      new Set(
+        [
+          oldTx.walletId,
+          oldTx.destinationWalletId ?? undefined,
+          finalWalletId,
+          finalDestId ?? undefined,
+        ].filter((id): id is string => !!id),
+      ),
+    );
 
-    const finalAmount = input.amount ?? Number(oldTx.amount);
-
-    // Revertir + aplicar balance en source
-    let newBalance = Number(wallet.currentBalance);
-    if (oldTx.movementType === 'INCOME') {
-      newBalance = newBalance - Number(oldTx.amount) + finalAmount;
-    } else if (oldTx.movementType === 'EXPENSE') {
-      newBalance = newBalance + Number(oldTx.amount) - finalAmount;
-    } else if (oldTx.movementType === 'TRANSFER') {
-      // Fix 3: también ajustar wallet destino en TRANSFER
-      if (!oldTx.destinationWalletId) throw new AppError(500, 'Transferencia sin wallet destino');
-      await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${oldTx.destinationWalletId} FOR UPDATE`;
-      const destWallet = await tx.wallet.findUnique({ where: { id: oldTx.destinationWalletId } });
-      if (!destWallet) throw new AppError(404, 'Billetera destino no encontrada');
-      const newDestBalance = Number(destWallet.currentBalance) - Number(oldTx.amount) + finalAmount;
-      await tx.wallet.update({ where: { id: oldTx.destinationWalletId }, data: { currentBalance: newDestBalance } });
-      newBalance = newBalance + Number(oldTx.amount) - finalAmount;
+    // Locks deterministas (orden por id) sobre TODAS las afectadas → evita deadlock (create L40-42).
+    for (const wid of [...affectedIds].sort()) {
+      await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${wid} FOR UPDATE`;
     }
 
-    await tx.wallet.update({
-      where: { id: oldTx.walletId },
-      data: { currentBalance: newBalance },
-    });
+    // Cargar balances DESPUÉS de los locks y validar ownership de cada billetera afectada.
+    const walletsById = new Map<string, { id: string; ownerId: string; currentBalance: unknown }>();
+    for (const wid of affectedIds) {
+      const w = await tx.wallet.findUnique({ where: { id: wid } });
+      if (!w || w.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Billetera no encontrada');
+      walletsById.set(wid, w as any);
+    }
+
+    // Delta por billetera: revertir el impacto viejo y aplicar el nuevo. Setea valores absolutos
+    // desde oldTx persistido → reejecutar el mismo PUT da delta neto 0 (replay-safe para el outbox).
+    const delta = new Map<string, number>();
+    const add = (wid: string, d: number) => delta.set(wid, (delta.get(wid) ?? 0) + d);
+    const oldAmount = Number(oldTx.amount);
+    if (movementType === 'INCOME') {
+      add(oldTx.walletId, -oldAmount);
+      add(finalWalletId, +finalAmount);
+    } else if (movementType === 'EXPENSE') {
+      add(oldTx.walletId, +oldAmount);
+      add(finalWalletId, -finalAmount);
+    } else if (movementType === 'TRANSFER') {
+      add(oldTx.walletId, +oldAmount);
+      add(oldTx.destinationWalletId as string, -oldAmount);
+      add(finalWalletId, -finalAmount);
+      add(finalDestId as string, +finalAmount);
+    }
+
+    for (const [wid, d] of delta) {
+      if (d === 0) continue;
+      const w = walletsById.get(wid)!;
+      await tx.wallet.update({ where: { id: wid }, data: { currentBalance: Number(w.currentBalance) + d } });
+    }
 
     const updatedTx = await tx.transaction.update({
       where: { id: transactionId },
@@ -195,6 +229,8 @@ export async function updateTransaction(
         amount: input.amount ?? oldTx.amount,
         description: input.description ?? oldTx.description,
         date: input.date ? new Date(input.date) : oldTx.date,
+        walletId: finalWalletId,
+        destinationWalletId: finalDestId,
       },
     });
 

@@ -358,6 +358,102 @@ describe('Transactions Service', () => {
       expect(histCall.data.oldSnapshot).toBeDefined();
       expect(histCall.data.newSnapshot).toBeDefined();
     });
+
+    // Helper: mock de wallets por id
+    const walletMock = (byId: Record<string, any>) =>
+      mockWalletFindUnique.mockImplementation(({ where }: any) => Promise.resolve(byId[where.id]));
+    const updatedBalances = () =>
+      Object.fromEntries(mockWalletUpdate.mock.calls.map((c: any) => [c[0].where.id, c[0].data.currentBalance]));
+
+    it('cambiar billetera en EXPENSE: revierte en la vieja y debita en la nueva', async () => {
+      const oldTx = { id: 'tx-1', walletId: 'wallet-1', destinationWalletId: null, categoryId: 'cat-1', amount: '20.00', description: 'x', date: new Date(), movementType: 'EXPENSE' };
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockTransactionFindFirst.mockResolvedValue(oldTx);
+      mockQueryRaw.mockResolvedValue(undefined);
+      walletMock({
+        'wallet-1': { id: 'wallet-1', ownerId: 'owner-1', currentBalance: '80.00' },
+        'wallet-2': { id: 'wallet-2', ownerId: 'owner-1', currentBalance: '50.00' },
+      });
+      mockWalletUpdate.mockResolvedValue({});
+      mockTransactionUpdate.mockResolvedValue({ ...oldTx, walletId: 'wallet-2' });
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      await updateTransaction('tx-1', { walletId: 'wallet-2' }, 'user-1', { ownerId: 'owner-1', role: 'OWNER' });
+
+      const bal = updatedBalances();
+      expect(bal['wallet-1']).toBe(100); // revierte el gasto: 80 + 20
+      expect(bal['wallet-2']).toBe(30); // aplica el gasto: 50 - 20
+      expect(mockTransactionUpdate.mock.calls[0][0].data.walletId).toBe('wallet-2');
+    });
+
+    it('cambiar billetera en INCOME: revierte en la vieja y acredita en la nueva', async () => {
+      const oldTx = { id: 'tx-1', walletId: 'wallet-1', destinationWalletId: null, categoryId: 'cat-1', amount: '30.00', description: 'x', date: new Date(), movementType: 'INCOME' };
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockTransactionFindFirst.mockResolvedValue(oldTx);
+      mockQueryRaw.mockResolvedValue(undefined);
+      walletMock({
+        'wallet-1': { id: 'wallet-1', ownerId: 'owner-1', currentBalance: '130.00' },
+        'wallet-2': { id: 'wallet-2', ownerId: 'owner-1', currentBalance: '10.00' },
+      });
+      mockWalletUpdate.mockResolvedValue({});
+      mockTransactionUpdate.mockResolvedValue({ ...oldTx, walletId: 'wallet-2' });
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      await updateTransaction('tx-1', { walletId: 'wallet-2' }, 'user-1', { ownerId: 'owner-1', role: 'OWNER' });
+
+      const bal = updatedBalances();
+      expect(bal['wallet-1']).toBe(100); // revierte el ingreso: 130 - 30
+      expect(bal['wallet-2']).toBe(40); // aplica el ingreso: 10 + 30
+    });
+
+    it('cambiar origen y destino en TRANSFER: ajusta las 4 billeteras', async () => {
+      const oldTx = { id: 'tx-1', walletId: 'wallet-1', destinationWalletId: 'wallet-2', categoryId: 'cat-1', amount: '10.00', description: 'x', date: new Date(), movementType: 'TRANSFER' };
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockTransactionFindFirst.mockResolvedValue(oldTx);
+      mockQueryRaw.mockResolvedValue(undefined);
+      walletMock({
+        'wallet-1': { id: 'wallet-1', ownerId: 'owner-1', currentBalance: '100.00' },
+        'wallet-2': { id: 'wallet-2', ownerId: 'owner-1', currentBalance: '200.00' },
+        'wallet-3': { id: 'wallet-3', ownerId: 'owner-1', currentBalance: '300.00' },
+        'wallet-4': { id: 'wallet-4', ownerId: 'owner-1', currentBalance: '400.00' },
+      });
+      mockWalletUpdate.mockResolvedValue({});
+      mockTransactionUpdate.mockResolvedValue({ ...oldTx, walletId: 'wallet-3', destinationWalletId: 'wallet-4' });
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      await updateTransaction('tx-1', { walletId: 'wallet-3', destinationWalletId: 'wallet-4' }, 'user-1', { ownerId: 'owner-1', role: 'OWNER' });
+
+      const bal = updatedBalances();
+      expect(bal['wallet-1']).toBe(110); // revierte origen viejo: 100 + 10
+      expect(bal['wallet-2']).toBe(190); // revierte destino viejo: 200 - 10
+      expect(bal['wallet-3']).toBe(290); // aplica origen nuevo: 300 - 10
+      expect(bal['wallet-4']).toBe(410); // aplica destino nuevo: 400 + 10
+    });
+
+    it('rechaza cambiar a una billetera que no es del owner (404)', async () => {
+      const oldTx = { id: 'tx-1', walletId: 'wallet-1', destinationWalletId: null, categoryId: 'cat-1', amount: '20.00', description: 'x', date: new Date(), movementType: 'EXPENSE' };
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockTransactionFindFirst.mockResolvedValue(oldTx);
+      mockQueryRaw.mockResolvedValue(undefined);
+      walletMock({
+        'wallet-1': { id: 'wallet-1', ownerId: 'owner-1', currentBalance: '80.00' },
+        'wallet-2': { id: 'wallet-2', ownerId: 'otro-owner', currentBalance: '50.00' },
+      });
+
+      await expect(
+        updateTransaction('tx-1', { walletId: 'wallet-2' }, 'user-1', { ownerId: 'owner-1', role: 'OWNER' }),
+      ).rejects.toThrow(AppError);
+    });
+
+    it('rechaza TRANSFER con origen == destino (400)', async () => {
+      const oldTx = { id: 'tx-1', walletId: 'wallet-1', destinationWalletId: 'wallet-2', categoryId: 'cat-1', amount: '10.00', description: 'x', date: new Date(), movementType: 'TRANSFER' };
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockTransactionFindFirst.mockResolvedValue(oldTx);
+
+      await expect(
+        updateTransaction('tx-1', { destinationWalletId: 'wallet-1' }, 'user-1', { ownerId: 'owner-1', role: 'OWNER' }),
+      ).rejects.toThrow(AppError);
+    });
   });
 
   describe('deleteTransaction', () => {
