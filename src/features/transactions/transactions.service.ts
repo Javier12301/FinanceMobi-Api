@@ -26,8 +26,11 @@ export async function createTransactionInTx(
   const walletCheck = await tx.wallet.findUnique({ where: { id: input.walletId }, select: { id: true, ownerId: true } });
   if (!walletCheck || walletCheck.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Billetera no encontrada');
 
-  const category = await tx.category.findUnique({ where: { id: input.categoryId } });
-  if (!category || category.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Categoría no encontrada');
+  // TRANSFER no lleva categoría; INCOME/EXPENSE sí (el schema ya lo exige). Validar ownership solo si viene.
+  if (input.categoryId) {
+    const category = await tx.category.findUnique({ where: { id: input.categoryId } });
+    if (!category || category.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Categoría no encontrada');
+  }
 
   if (input.movementType === 'TRANSFER') {
     if (!input.destinationWalletId) throw new AppError(400, 'destinationWalletId requerido para TRANSFER');
@@ -68,7 +71,7 @@ export async function createTransactionInTx(
       ...(input.id ? { id: input.id } : {}),
       walletId: input.walletId,
       destinationWalletId: input.destinationWalletId,
-      categoryId: input.categoryId,
+      categoryId: input.categoryId ?? null,
       amount: input.amount,
       description: input.description,
       date: new Date(input.date),

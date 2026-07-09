@@ -160,7 +160,7 @@ model Transaction {
   id                  String       @id @default(uuid())
   walletId            String
   destinationWalletId String?
-  categoryId          String
+  categoryId          String?
   amount              Decimal      @db.Decimal(15, 2)
   description         String?
   date                DateTime
@@ -173,7 +173,7 @@ model Transaction {
 
   wallet            Wallet                  @relation("SourceWallet", fields: [walletId], references: [id])
   destinationWallet Wallet?                 @relation("DestinationWallet", fields: [destinationWalletId], references: [id])
-  category          Category                @relation(fields: [categoryId], references: [id])
+  category          Category?               @relation(fields: [categoryId], references: [id])
   debt              Debt?                   @relation("DebtTransactions", fields: [debtId], references: [id])
   recurringRule     RecurringRule?          @relation("RuleTransactions", fields: [recurringRuleId], references: [id])
   history           TransactionHistory[]

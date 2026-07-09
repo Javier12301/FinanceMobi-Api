@@ -1,17 +1,24 @@
 import { z } from 'zod';
 
-export const createTransactionSchema = z.object({
-  // id opcional generado por el cliente (alta offline): hace el POST idempotente ante reintentos.
-  id: z.string().uuid().optional(),
-  walletId: z.string().uuid(),
-  destinationWalletId: z.string().uuid().optional(),
-  categoryId: z.string().uuid(),
-  amount: z.number().positive('El monto debe ser positivo'),
-  description: z.string().optional(),
-  date: z.string().datetime(),
-  movementType: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']),
-  debtId: z.string().uuid().optional(),
-});
+export const createTransactionSchema = z
+  .object({
+    // id opcional generado por el cliente (alta offline): hace el POST idempotente ante reintentos.
+    id: z.string().uuid().optional(),
+    walletId: z.string().uuid(),
+    destinationWalletId: z.string().uuid().optional(),
+    // Opcional: una transferencia entre billeteras propias no tiene categoría. Obligatorio para
+    // INCOME/EXPENSE (ver refine).
+    categoryId: z.string().uuid().optional(),
+    amount: z.number().positive('El monto debe ser positivo'),
+    description: z.string().optional(),
+    date: z.string().datetime(),
+    movementType: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']),
+    debtId: z.string().uuid().optional(),
+  })
+  .refine((data) => data.movementType === 'TRANSFER' || !!data.categoryId, {
+    path: ['categoryId'],
+    message: 'categoryId es requerido para INCOME/EXPENSE',
+  });
 
 export const updateTransactionSchema = z.object({
   categoryId: z.string().uuid().optional(),

@@ -216,6 +216,31 @@ describe('Transactions Service', () => {
       expect(mockTransactionCreate).toHaveBeenCalled();
     });
 
+    it('crea TRANSFER sin categoría (categoryId null)', async () => {
+      const sourceBefore = { id: 'wallet-1', ownerId: 'owner-1', currentBalance: { toNumber: () => 100.0 } };
+      const destBefore = { id: 'wallet-2', ownerId: 'owner-1', currentBalance: { toNumber: () => 10.0 } };
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockWalletFindUnique.mockImplementation((opts: any) => {
+        if (opts.where.id === 'wallet-1') return Promise.resolve(sourceBefore);
+        if (opts.where.id === 'wallet-2') return Promise.resolve(destBefore);
+        return Promise.resolve(undefined);
+      });
+      mockWalletUpdate.mockResolvedValue({});
+      mockTransactionCreate.mockResolvedValue({ id: 'tx-1' });
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      await createTransaction(
+        { walletId: 'wallet-1', destinationWalletId: 'wallet-2', amount: 5000, date: new Date().toISOString(), movementType: 'TRANSFER' },
+        { ownerId: 'owner-1', role: 'OWNER' },
+        'user-1',
+      );
+
+      // No se consulta ninguna categoría y la transacción se crea con categoryId null.
+      expect(mockCategoryFindUnique).not.toHaveBeenCalled();
+      expect(mockTransactionCreate.mock.calls[0][0].data.categoryId).toBeNull();
+    });
+
     it('revierte cambios en rollback de transacción', async () => {
       const txMock = async (fn: Function) => {
         throw new Error('Transaction failed');

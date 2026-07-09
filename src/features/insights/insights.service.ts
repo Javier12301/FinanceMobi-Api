@@ -45,6 +45,7 @@ export async function getInsights(ownerContext: OwnerContext, month: string) {
   // Top categorías por gasto
   const catTotals: Record<string, number> = {};
   for (const tx of currentTxs.filter((t) => t.movementType === 'EXPENSE')) {
+    if (!tx.categoryId) continue; // los EXPENSE siempre tienen categoría; guard por el tipo nullable
     catTotals[tx.categoryId] = (catTotals[tx.categoryId] ?? 0) + Number(tx.amount);
   }
   const topCategories = Object.entries(catTotals)
