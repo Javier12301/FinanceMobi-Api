@@ -17,6 +17,7 @@ enum MovementType {
   INCOME
   EXPENSE
   TRANSFER
+  ADJUSTMENT
 }
 
 enum DelegationRole {

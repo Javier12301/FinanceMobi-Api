@@ -152,6 +152,9 @@ export async function updateTransaction(
     if (!oldTx) throw new AppError(404, 'Transacción no encontrada');
 
     // El movementType es inmutable en edición. Valores finales: lo que no viene en input queda igual.
+    if (oldTx.movementType === 'ADJUSTMENT') {
+      throw new AppError(409, 'Los ajustes de saldo no se pueden editar');
+    }
     const movementType = oldTx.movementType;
     const finalAmount = input.amount ?? Number(oldTx.amount);
     const finalWalletId = input.walletId ?? oldTx.walletId;
@@ -262,6 +265,9 @@ export async function deleteTransaction(
   });
   if (!transaction) throw new AppError(404, 'Transacción no encontrada');
 
+  if (transaction.movementType === 'ADJUSTMENT') {
+    throw new AppError(409, 'Los ajustes de saldo no se pueden eliminar');
+  }
   if (transaction.wallet.ownerId !== ownerContext.ownerId) {
     throw new AppError(403, 'No autorizado');
   }

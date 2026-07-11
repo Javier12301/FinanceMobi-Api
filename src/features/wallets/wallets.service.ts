@@ -1,6 +1,6 @@
 import { prisma } from '../../core/database/prisma';
 import { AppError } from '../../core/errors';
-import type { CreateWalletInput, UpdateWalletInput } from './wallets.schema';
+import type { AdjustWalletBalanceInput, CreateWalletInput, UpdateWalletInput } from './wallets.schema';
 
 export async function createWallet(ownerId: string, input: CreateWalletInput) {
   return prisma.wallet.create({
@@ -39,4 +39,45 @@ export async function deleteWallet(walletId: string) {
   const count = await prisma.transaction.count({ where: { walletId } });
   if (count > 0) throw new AppError(409, 'No se puede eliminar una billetera con transacciones.');
   return prisma.wallet.delete({ where: { id: walletId } });
+}
+
+export async function adjustWalletBalance(walletId: string, ownerId: string, userId: string, input: AdjustWalletBalanceInput) {
+  return prisma.$transaction(async (tx) => {
+    if (input.id) {
+      const existing = await tx.transaction.findUnique({ where: { id: input.id } });
+      if (existing) {
+        if (existing.walletId !== walletId || existing.movementType !== 'ADJUSTMENT') {
+          throw new AppError(409, 'El identificador ya pertenece a otro movimiento');
+        }
+        return existing;
+      }
+    }
+
+    await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${walletId} FOR UPDATE`;
+    const wallet = await tx.wallet.findUnique({ where: { id: walletId } });
+    if (!wallet || wallet.ownerId !== ownerId) throw new AppError(404, 'Billetera no encontrada');
+
+    const previousBalance = Number(wallet.currentBalance);
+    const delta = input.targetBalance - previousBalance;
+    const transaction = await tx.transaction.create({
+      data: {
+        ...(input.id ? { id: input.id } : {}),
+        walletId,
+        amount: delta,
+        description: input.note || null,
+        date: new Date(),
+        movementType: 'ADJUSTMENT',
+      },
+    });
+    await tx.wallet.update({ where: { id: walletId }, data: { currentBalance: input.targetBalance } });
+    await tx.transactionHistory.create({
+      data: {
+        transactionId: transaction.id,
+        modifiedById: userId,
+        action: 'ADJUSTMENT',
+        newSnapshot: { previousBalance, targetBalance: input.targetBalance, delta, note: input.note ?? null },
+      },
+    });
+    return transaction;
+  });
 }

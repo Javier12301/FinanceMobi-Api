@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { createWallet as svcCreate, listWallets as svcList, updateWallet as svcUpdate, deleteWallet as svcDelete } from './wallets.service';
-import type { CreateWalletInput, UpdateWalletInput } from './wallets.schema';
+import { adjustWalletBalance as svcAdjustBalance, createWallet as svcCreate, listWallets as svcList, updateWallet as svcUpdate, deleteWallet as svcDelete } from './wallets.service';
+import type { AdjustWalletBalanceInput, CreateWalletInput, UpdateWalletInput } from './wallets.schema';
 
 export async function createWallet(req: Request, res: Response, next: NextFunction) {
   try {
@@ -25,5 +25,12 @@ export async function deleteWallet(req: Request, res: Response, next: NextFuncti
   try {
     await svcDelete(req.params.walletId);
     res.status(204).send();
+  } catch (err) { next(err); }
+}
+
+export async function adjustWalletBalance(req: Request, res: Response, next: NextFunction) {
+  try {
+    const transaction = await svcAdjustBalance(req.params.walletId, req.ownerContext!.ownerId, req.user!.sub, req.body as AdjustWalletBalanceInput);
+    res.status(201).json(transaction);
   } catch (err) { next(err); }
 }

@@ -16,6 +16,12 @@ export const updateWalletSchema = z.object({
   initialBalance: z.number().min(0).optional(),
 });
 
+export const adjustWalletBalanceSchema = z.object({
+  id: z.string().uuid().optional(),
+  targetBalance: z.number().finite('El saldo real debe be a valid number'),
+  note: z.string().trim().max(500).optional(),
+});
+
 const iconEnum = z.enum(['utensils', 'cart', 'bus', 'car', 'home', 'lightbulb', 'wifi', 'phone', 'drama', 'dumbbell', 'health', 'education', 'shirt', 'gift', 'plane', 'receipt', 'card', 'wallet', 'piggy', 'tag']);
 const colorRegex = /^#[0-9a-fA-F]{6}$/;
 
@@ -34,5 +40,6 @@ export const updateCategorySchema = z.object({
 
 export type CreateWalletInput = z.infer<typeof createWalletSchema>;
 export type UpdateWalletInput = z.infer<typeof updateWalletSchema>;
+export type AdjustWalletBalanceInput = z.infer<typeof adjustWalletBalanceSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;

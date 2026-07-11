@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `Category` MODIFY `movementType` ENUM('INCOME', 'EXPENSE', 'TRANSFER', 'ADJUSTMENT') NOT NULL;
+
+-- AlterTable
+ALTER TABLE `RecurringRule` MODIFY `movementType` ENUM('INCOME', 'EXPENSE', 'TRANSFER', 'ADJUSTMENT') NOT NULL;
