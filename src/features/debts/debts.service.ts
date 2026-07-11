@@ -153,7 +153,17 @@ export async function payDebtInTx(
   ownerContext: OwnerContext,
   userId: string,
   customDescription?: string,
+  transactionId?: string,
 ) {
+  if (transactionId) {
+    const existingTransaction = await tx.transaction.findUnique({ where: { id: transactionId } });
+    if (existingTransaction) {
+      if (existingTransaction.debtId !== debtId) throw new AppError(409, 'El identificador ya pertenece a otro movimiento');
+      const existingDebt = await tx.debt.findUnique({ where: { id: debtId } });
+      if (!existingDebt || existingDebt.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Deuda no encontrada');
+      return existingDebt;
+    }
+  }
   const debt = await tx.debt.findUnique({ where: { id: debtId } });
   if (!debt || debt.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Deuda no encontrada');
   if (debt.status === 'PAID') throw new AppError(409, 'La deuda ya está saldada');
@@ -176,7 +186,7 @@ export async function payDebtInTx(
       : `Pago — ${debt.counterparty}`);
 
   // La billetera se debita por el MONTO TOTAL real (capital + recargo).
-  await createTransactionInTx(tx, { walletId, categoryId, amount, movementType, date: new Date().toISOString(), description, debtId }, ownerContext, userId);
+  await createTransactionInTx(tx, { ...(transactionId ? { id: transactionId } : {}), walletId, categoryId, amount, movementType, date: new Date().toISOString(), description, debtId }, ownerContext, userId);
 
   // Reparto capital/recargo. Cuotas restantes = total - ya pagadas (antes de este pago); sin plan de cuotas → 1.
   const restantes = debt.installmentsTotal ? Math.max(1, debt.installmentsTotal - (debt.installmentsPaid ?? 0)) : 1;
@@ -211,6 +221,6 @@ export async function payDebt(
   ownerContext: OwnerContext,
   userId: string,
 ) {
-  const result = await prisma.$transaction((tx) => payDebtInTx(tx, debtId, input.walletId, input.amount, ownerContext, userId));
+  const result = await prisma.$transaction((tx) => payDebtInTx(tx, debtId, input.walletId, input.amount, ownerContext, userId, undefined, input.id));
   return serializeDebt(result);
 }

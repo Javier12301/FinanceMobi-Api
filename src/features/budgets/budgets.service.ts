@@ -8,6 +8,13 @@ export async function listBudgets(ownerId: string) {
 }
 
 export async function createBudget(ownerId: string, input: CreateBudgetInput) {
+  if (input.id) {
+    const existing = await prisma.budget.findUnique({ where: { id: input.id } });
+    if (existing) {
+      if (existing.ownerId !== ownerId) throw new AppError(409, 'El identificador ya pertenece a otro presupuesto');
+      return existing;
+    }
+  }
   // Verificar que categoryId pertenezca al owner
   const category = await prisma.category.findUnique({
     where: { id: input.categoryId },
@@ -20,6 +27,7 @@ export async function createBudget(ownerId: string, input: CreateBudgetInput) {
   try {
     return await prisma.budget.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         ownerId,
         categoryId: input.categoryId,
         month: input.month,

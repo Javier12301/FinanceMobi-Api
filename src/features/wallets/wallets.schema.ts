@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const createWalletSchema = z.object({
+  // ID del cliente para altas offline: el replay del outbox es idempotente.
+  id: z.string().uuid().optional(),
   name: z.string().min(1, 'El nombre es requerido'),
   typeId: z.number().int().positive('typeId debe ser un número positivo'),
   description: z.string().optional(),
@@ -26,6 +28,8 @@ const iconEnum = z.enum(['utensils', 'cart', 'bus', 'car', 'home', 'lightbulb', 
 const colorRegex = /^#[0-9a-fA-F]{6}$/;
 
 export const createCategorySchema = z.object({
+  // ID del cliente para que una categoría creada offline pueda ser referenciada FIFO.
+  id: z.string().uuid().optional(),
   name: z.string().min(1, 'El nombre es requerido'),
   movementType: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']),
   icon: iconEnum.nullable().optional(),

@@ -3,8 +3,16 @@ import { AppError } from '../../core/errors';
 import type { AdjustWalletBalanceInput, CreateWalletInput, UpdateWalletInput } from './wallets.schema';
 
 export async function createWallet(ownerId: string, input: CreateWalletInput) {
+  if (input.id) {
+    const existing = await prisma.wallet.findUnique({ where: { id: input.id } });
+    if (existing) {
+      if (existing.ownerId !== ownerId) throw new AppError(409, 'El identificador ya pertenece a otra billetera');
+      return existing;
+    }
+  }
   return prisma.wallet.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       ownerId,
       typeId: input.typeId,
       name: input.name,

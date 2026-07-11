@@ -3,8 +3,15 @@ import { AppError } from '../../core/errors';
 import type { CreateCategoryInput, UpdateCategoryInput } from './wallets.schema';
 
 export async function createCategory(ownerId: string, input: CreateCategoryInput) {
+  if (input.id) {
+    const existing = await prisma.category.findUnique({ where: { id: input.id } });
+    if (existing) {
+      if (existing.ownerId !== ownerId) throw new AppError(409, 'El identificador ya pertenece a otra categoría');
+      return existing;
+    }
+  }
   return prisma.category.create({
-    data: { ownerId, name: input.name, movementType: input.movementType, icon: input.icon, color: input.color } as any,
+    data: { ...(input.id ? { id: input.id } : {}), ownerId, name: input.name, movementType: input.movementType, icon: input.icon, color: input.color } as any,
   });
 }
 

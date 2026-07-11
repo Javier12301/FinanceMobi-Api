@@ -6,6 +6,7 @@ vi.mock('../../core/database/prisma', () => ({
       findFirst: vi.fn(),
       create: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }));
 vi.mock('../../core/database/redis', () => ({
@@ -38,11 +39,20 @@ import { AppError } from '../../core/errors';
 const mockFindFirst = prisma.user.findFirst as ReturnType<typeof vi.fn>;
 const mockCreate = prisma.user.create as ReturnType<typeof vi.fn>;
 const mockVerifyGoogle = verifyGoogleIdToken as ReturnType<typeof vi.fn>;
+const mockTransaction = prisma.$transaction as ReturnType<typeof vi.fn>;
 
 const googlePayload = { sub: 'google-sub-123', email: 'user@gmail.com' };
 const existingUser = { id: 'user-uuid-1', email: 'user@gmail.com', googleId: 'google-sub-123' };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockTransaction.mockImplementation(async (fn) => fn({
+    user: { create: mockCreate },
+    category: { createMany: vi.fn().mockResolvedValue({ count: 8 }) },
+    walletType: { findFirst: vi.fn().mockResolvedValue({ id: 1, name: 'CASH' }) },
+    wallet: { create: vi.fn().mockResolvedValue({ id: 'wallet-1' }) },
+  }));
+});
 
 describe('loginWithGoogle', () => {
   it('identifica un usuario existente y emite JWT sin crear usuario nuevo', async () => {

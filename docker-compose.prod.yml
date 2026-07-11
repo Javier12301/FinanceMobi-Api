@@ -1,35 +1,4 @@
 services:
-  mysql:
-    image: mysql:8.4
-    restart: unless-stopped
-    # ponytail: sin freno de RAM — corre en PC de 16 GB. Si migrás a VPS chico (2 GB),
-    # agregá: command: --innodb-buffer-pool-size=256M
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    volumes:
-      - mysql_data:/var/lib/mysql
-    # ╔══════════════════════════════════════════════════════════════════════╗
-    # ║  ⚠️  PUERTO MYSQL EXPUESTO — SOLO PARA TESTING EN LA PC LOCAL          ║
-    # ║                                                                        ║
-    # ║  Bindeado a 127.0.0.1 → accesible SOLO desde esta PC (no por Tailscale ║
-    # ║  ni por la LAN). Sirve para conectar DBeaver / Workbench a            ║
-    # ║  127.0.0.1:3306  (usuario: admin / pass: admin / base: financevier).  ║
-    # ║                                                                        ║
-    # ║  👉 ANTES DE PASAR A VPS: BORRAR ESTAS DOS LÍNEAS 'ports'.            ║
-    # ║     En el VPS la DB no debe tener ningún puerto publicado — solo se    ║
-    # ║     habla por la red interna de Docker (host: mysql:3306).            ║
-    # ╚══════════════════════════════════════════════════════════════════════╝
-    ports:
-      - "127.0.0.1:3306:3306"
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -37,56 +6,57 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - finance_internal
+    mem_limit: 256m
 
   backend:
     build: .
     restart: unless-stopped
     env_file: .env
-    # Dentro de la red Docker el backend habla con los servicios por su nombre,
-    # no por localhost. Esto pisa los valores de .env (que apuntan a localhost para dev).
     environment:
       NODE_ENV: production
-      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      DATABASE_URL: mysql://${FINANCE_DB_USER}:${FINANCE_DB_PASSWORD}@mysql:3306/${FINANCE_DB_NAME}
       REDIS_URL: redis://redis:6379
     depends_on:
-      mysql:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      # wget viene en node:22-alpine (busybox); curl no está en la imagen.
-      # 127.0.0.1 explícito: localhost resolvería a ::1 (IPv6) y Node escucha en IPv4.
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:3000/api/health']
       interval: 15s
       timeout: 5s
       retries: 3
+    networks:
+      finance_internal:
+      platform_data:
+      platform_edge:
+        aliases:
+          - finance-backend
+    mem_limit: 512m
 
-  # Caddy: sirve el frontend estático + reverse proxy a /api.
-  # En LAN/Tailscale: DOMAIN=:80 (HTTP; Tailscale termina el TLS).
-  # En VPS real: DOMAIN=tudominio.com → Caddy saca el SSL de Let's Encrypt solo.
-  caddy:
-    image: caddy:2-alpine
+  frontend:
+    build:
+      context: ../Frontend
+      dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      DOMAIN: ${DOMAIN}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../frontend/dist:/srv:ro      # build del frontend (vive en la raíz del repo)
-      - caddy_data:/data              # ponytail: persiste los certs, no re-emitir en cada deploy
-      - caddy_config:/config
-    depends_on:
-      backend:
-        condition: service_healthy
+    networks:
+      platform_edge:
+        aliases:
+          - finance-frontend
+    mem_limit: 128m
 
 volumes:
-  mysql_data:
   redis_data:
-  caddy_data:
-  caddy_config:
+
+networks:
+  finance_internal:
+  platform_edge:
+    external: true
+    name: platform_edge
+  platform_data:
+    external: true
+    name: platform_data

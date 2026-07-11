@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const createBudgetSchema = z.object({
+  // ID del cliente para idempotencia del replay offline.
+  id: z.string().uuid().optional(),
   categoryId: z.string().uuid('categoryId debe ser un UUID válido'),
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'month debe estar en formato YYYY-MM'),
   limit: z.number().positive('limit debe ser mayor a 0'),

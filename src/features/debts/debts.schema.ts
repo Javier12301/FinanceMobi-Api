@@ -21,6 +21,8 @@ export const updateDebtSchema = z.object({
 });
 
 export const payDebtSchema = z.object({
+  // Identificador de la transacción creada por el pago; evita duplicados al reintentar offline.
+  id: z.string().uuid().optional(),
   walletId: z.string().uuid(),
   amount: z.number().positive(),
 });
