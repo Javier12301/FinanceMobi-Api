@@ -86,6 +86,6 @@ Ver `.env.example`. Las críticas para arrancar:
 - Para tests que usan `app` (supertest): mockear también `../features/auth/auth.ratelimit` como passthrough para evitar que `RedisStore` inicialice contra el mock.
 - Los mocks de `verifyGoogleIdToken` deben lanzar `AppError(401)` al simular fallo (no `Error` genérico).
 
-## Subagentes para implementación
+## Documentación vigente
 
-Este proyecto implementa checkpoints con subagentes Haiku dirigidos por un orquestador Sonnet/Opus. **El detalle de cómo lanzarlos vive en `docs/orquestacion-subagentes.md` y es solo para el orquestador** — no se le indica a un subagente que lea ese documento ni este `CLAUDE.md` completo; recibe únicamente el extracto de arquitectura/convenciones que le toca, ya incluido en su prompt.
+La documentación de producto y contratos vive en ../docs/. Revisar ../docs/README.md y los documentos de arquitectura o funcionalidad aplicables antes de cambiar comportamiento o contratos.

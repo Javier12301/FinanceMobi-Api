@@ -1,12 +1,12 @@
 > **ARCHIVADO 2026-06-28** — Implementación V4 completa. 182/182 tests, tsc limpio, QA manual aprobado.  
-> Contrato publicado en `docs/para-front/contrato-frontend-v4.md`.  
+> Contrato vigente publicado en `../../../../docs/03-arquitectura/api-y-contrato.md`.
 > Fuente movida a `docs/finalizado/frontend-pendientes-v4.md`.
 
 ## Why
 
 Frontend V4 is already planned around retention features that the backend does not expose yet. The UI can degrade gracefully while endpoints are missing, but implementation now needs an approved OpenSpec plan to avoid contract drift and to preserve the V3 guarantees around owner context, ACID ledger mutations, and Spanish checkpoint reporting.
 
-Source contract: `docs/pendientes/frontend-pendientes-v4.md`.
+Source contract: `../../../../docs/03-arquitectura/api-y-contrato.md`.
 
 ## What Changes
 

@@ -10,7 +10,7 @@ Internal OpenSpec artifacts, code, identifiers, database names, tests, commits, 
 
 ## Source Documentation
 
-- Primary source: `docs/Finance-DOCU/Plan - FinanceVier 38b7a95b97b280869621c4d7573a66f3.md`
+- Primary source: `../docs/README.md` and its current architecture and functionality documents.
 - This OpenSpec layer extracts backend requirements only.
 - Frontend and mobile notes are context, not implementation scope for this backend repository unless a backend contract is required.
 

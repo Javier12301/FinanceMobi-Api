@@ -30,7 +30,7 @@ The implementer SHALL treat every `openspec/specs/*/spec.md` file as an implemen
 
 ### Requirement: Open questions block irreversible decisions
 
-The implementer SHALL consult `docs/OPEN_QUESTIONS.md` before making schema, security, deletion, or API contract decisions that are unresolved.
+The implementer SHALL consult `../docs/README.md` and the applicable architecture documents before making schema, security, deletion, or API contract decisions that are unresolved.
 
 #### Scenario: Unresolved deletion policy
 

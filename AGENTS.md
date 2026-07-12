@@ -12,14 +12,14 @@ Eres el Arquitecto Orquestador (GPT-5.5), Documentador y Revisor de Codigo Princ
 
 ## OpenSpec & Contract Workflow
 
-1. Primera accion: leer `docs/pendientes` para entender integraciones faltantes del frontend.
+1. Primera acción: leer ../docs/README.md y el contrato vigente en ../docs/03-arquitectura/api-y-contrato.md.
 2. Usa `openspec cli` para revisar especificaciones actuales y registrar proposal, design y tasks. No iniciar implementaciones sin OpenSpec aprobado en el historial.
 3. En auditorias del implementador, usa el MCP `engram` cuando este disponible para leer memoria del proyecto antes de juzgar el codigo.
 4. Como control de calidad final, revisa contra el contrato del frontend. Si hay bugs, brechas de seguridad o desvios, no corrijas directamente: genera un documento estructurado de Fix con error y solucion esperada.
 
 ## Project Structure & Module Organization
 
-This repository is a TypeScript backend for FinanceVier. Runtime code lives in `src/`, with `src/server.ts` as the process entry and `src/app.ts` assembling the Express app. Shared infrastructure is under `src/core/` and domain modules are under `src/features/`, including `auth`, `wallets`, `transactions`, `attachments`, and `delegations`. Prisma schema, migrations, and seed logic live in `prisma/`. API/manual testing assets are in `bruno/`; technical notes and pending integration docs are in `docs/`; OpenSpec change history is in `openspec/`. Build output goes to `dist/` and should not be edited directly.
+This repository is a TypeScript backend for FinanceVier. Runtime code lives in `src/`, with `src/server.ts` as the process entry and `src/app.ts` assembling the Express app. Shared infrastructure is under `src/core/` and domain modules are under `src/features/`, including `auth`, `wallets`, `transactions`, `attachments`, and `delegations`. Prisma schema, migrations, and seed logic live in `prisma/`. API/manual testing assets are in `bruno/`; la documentación vigente vive en `../docs/`; OpenSpec change history is in `openspec/`. Build output goes to `dist/` and should not be edited directly.
 
 ## Build, Test, and Development Commands
 
@@ -47,4 +47,4 @@ Recent history uses short, status-oriented messages such as `BACKEND V1 - FINISH
 
 ## Security & Configuration Tips
 
-Copy `.env.example` to `.env` for local work and never commit real secrets. Keep schema changes in Prisma migrations. For contract-sensitive backend work, review `docs/pendientes` and OpenSpec entries before implementation.
+Copy `.env.example` to `.env` for local work and never commit real secrets. Keep schema changes in Prisma migrations. For contract-sensitive backend work, review ../docs/03-arquitectura/api-y-contrato.md and OpenSpec entries before implementation.
