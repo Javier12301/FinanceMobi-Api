@@ -156,6 +156,18 @@ async function postOnePendingAtomically(
       if (opts.strict) throw new AppError(404, 'Movimiento no encontrado');
       return;
     }
+
+    // Ownership ANTES de mirar el estado: si no es tuyo, es un 404 y no se filtra si existe o en
+    // qué estado está (un 409 "ya está registrado" confirmaría el movimiento de otro owner).
+    const ownerCheck = await tx.wallet.findUnique({
+      where: { id: t.walletId },
+      select: { ownerId: true },
+    });
+    if (!ownerCheck || ownerCheck.ownerId !== ownerContext.ownerId) {
+      if (opts.strict) throw new AppError(404, 'Movimiento no encontrado');
+      return;
+    }
+
     if (t.status !== 'PENDING') {
       if (opts.strict) throw new AppError(409, 'El movimiento ya está registrado');
       return;

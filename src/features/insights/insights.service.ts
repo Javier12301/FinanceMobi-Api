@@ -23,6 +23,9 @@ export async function getInsights(ownerContext: OwnerContext, month: string) {
   const baseWhere = (f: Date, t: Date) => ({
     walletId: { in: walletIds },
     deletedAt: null,
+    // Los gastos futuros (PENDING) todavía no descontaron plata: no se cuentan como gastado.
+    // Sin esto, un pendiente con fecha dentro del mes en curso inflaba los totales y el gráfico.
+    status: 'POSTED',
     date: { gte: f, lt: t },
     movementType: { in: ['INCOME', 'EXPENSE'] as ('INCOME' | 'EXPENSE')[] },
   });

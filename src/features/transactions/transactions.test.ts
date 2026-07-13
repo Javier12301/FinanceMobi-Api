@@ -864,6 +864,27 @@ describe('Transactions Service', () => {
       expect(new Date(patch.date).toISOString().slice(0, 10)).toBe(today);
     });
 
+    // El estado no se revela antes de validar la propiedad: el movimiento de otro owner es 404,
+    // nunca 409 (un 409 confirmaría que ese movimiento existe y ya está posteado).
+    it('postTransactionNow da 404 (no 409) para un movimiento de otro owner', async () => {
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockTransactionFindUnique.mockResolvedValue({
+        id: 'tx-ajena',
+        walletId: 'wallet-ajena',
+        amount: '5000.00',
+        movementType: 'EXPENSE',
+        status: 'POSTED', // ya posteado: sin el chequeo de ownership primero, daría 409
+        deletedAt: null,
+      });
+      mockWalletFindUnique.mockResolvedValue({ id: 'wallet-ajena', ownerId: 'otro-owner' });
+
+      await expect(
+        postTransactionNow('tx-ajena', { ownerId: 'owner-1', role: 'OWNER' }, 'user-1'),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+    });
+
     it('postTransactionNow rechaza un movimiento que ya está POSTED (409)', async () => {
       mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
       mockQueryRaw.mockResolvedValue(undefined);
@@ -875,6 +896,8 @@ describe('Transactions Service', () => {
         status: 'POSTED',
         deletedAt: null,
       });
+      // Billetera propia: pasa el chequeo de ownership y recién ahí choca con el estado.
+      mockWalletFindUnique.mockResolvedValue({ id: 'wallet-1', ownerId: 'owner-1' });
 
       await expect(
         postTransactionNow('tx-1', { ownerId: 'owner-1', role: 'OWNER' }, 'user-1'),

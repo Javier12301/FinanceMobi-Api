@@ -93,7 +93,8 @@ export async function getNotificationCandidates(now: Date) {
       category: {
         include: {
           transactions: {
-            where: { deletedAt: null, movementType: 'EXPENSE', date: { gte: monthStart, lt: nextMonthStart } },
+            // status POSTED: un gasto futuro (PENDING) todavía no se gastó, no consume presupuesto.
+            where: { deletedAt: null, status: 'POSTED', movementType: 'EXPENSE', date: { gte: monthStart, lt: nextMonthStart } },
           },
         },
       },

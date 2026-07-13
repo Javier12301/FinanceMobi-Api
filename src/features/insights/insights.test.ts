@@ -92,4 +92,17 @@ describe('getInsights', () => {
     expect(result.biggestExpense?.transactionId).toBe('tx-big');
     expect(result.biggestExpense?.amount).toBe('800.00');
   });
+
+  // Un gasto futuro (PENDING) todavía no descontó plata: no puede figurar como gastado.
+  // Sin este filtro, un pendiente con fecha dentro del mes en curso inflaba los totales.
+  it('excluye los movimientos PENDING (gastos futuros)', async () => {
+    mockWallets.mockResolvedValue([{ id: 'wallet-1' }]);
+    mockTxs.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    await getInsights(ownerCtx, '2026-06');
+
+    for (const call of mockTxs.mock.calls) {
+      expect(call[0].where).toMatchObject({ status: 'POSTED' });
+    }
+  });
 });
