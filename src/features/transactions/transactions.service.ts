@@ -8,6 +8,16 @@ interface OwnerContext {
   role: 'OWNER' | 'SUPERVISOR' | 'ASESOR';
 }
 
+// Frontera única entre "ya ocurrió" y "es futuro": un movimiento es PENDING sii su fecha cae
+// en un día posterior a hoy. Misma frontera al crear y al barrer, para que no queden huecos.
+// ponytail: hora local del server; si algún día importan zonas horarias por owner, mover acá.
+function startOfTomorrow(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1);
+  return d;
+}
+
 // ponytail: helper extraído para permitir composición en transacciones externas (e.g. debt payment)
 export async function createTransactionInTx(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
@@ -37,6 +47,31 @@ export async function createTransactionInTx(
     if (input.destinationWalletId === input.walletId) throw new AppError(400, 'La billetera origen y destino no pueden ser la misma');
     const destCheck = await tx.wallet.findUnique({ where: { id: input.destinationWalletId }, select: { id: true, ownerId: true } });
     if (!destCheck || destCheck.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Billetera destino no encontrada');
+  }
+
+  // Gasto futuro: si la fecha cae en un día posterior a hoy, el movimiento nace PENDING y NO toca
+  // el saldo. postDuePendingTransactions lo postea cuando llega su fecha.
+  if (new Date(input.date) >= startOfTomorrow()) {
+    const pendingTx = await tx.transaction.create({
+      data: {
+        ...(input.id ? { id: input.id } : {}),
+        walletId: input.walletId,
+        destinationWalletId: input.destinationWalletId,
+        categoryId: input.categoryId ?? null,
+        amount: input.amount,
+        description: input.description,
+        date: new Date(input.date),
+        movementType: input.movementType,
+        status: 'PENDING',
+        debtId: input.debtId ?? null,
+      },
+    });
+
+    await tx.transactionHistory.create({
+      data: { transactionId: pendingTx.id, modifiedById: userId, action: 'CREATE', newSnapshot: pendingTx },
+    });
+
+    return pendingTx;
   }
 
   // Locks deterministicos por id (previene deadlock en transferencias cruzadas concurrentes)
@@ -94,6 +129,117 @@ export async function createTransaction(input: CreateTransactionInput, ownerCont
   return prisma.$transaction((tx) => createTransactionInTx(tx, input, ownerContext, userId));
 }
 
+// Postea los gastos futuros cuya fecha ya llegó. Materialización perezosa (mismo patrón que
+// recurring.getPendingRules): se dispara en el GET de transacciones, sin cron — el servidor es una
+// PC que no siempre está prendida. Cada pendiente va en su propia $transaction con FOR UPDATE para
+// que dos requests concurrentes no lo posteen dos veces.
+interface PostOptions {
+  /** Pisa la fecha del movimiento con "ahora". Lo usa el posteo anticipado ("ya se me descontó"). */
+  dateToNow?: boolean;
+  /** Falla con 409 si el movimiento no está PENDING, en vez de ignorarlo en silencio. */
+  strict?: boolean;
+}
+
+async function postOnePendingAtomically(
+  transactionId: string,
+  ownerContext: OwnerContext,
+  userId: string,
+  opts: PostOptions = {},
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await (tx as any).$queryRaw`SELECT id FROM Transaction WHERE id = ${transactionId} FOR UPDATE`;
+
+    const t = await tx.transaction.findUnique({ where: { id: transactionId } });
+    // Otra request pudo haberlo posteado o borrado mientras esperábamos el lock. En el barrido eso
+    // se ignora; cuando el usuario lo pidió explícitamente, hay que avisarle.
+    if (!t || t.deletedAt) {
+      if (opts.strict) throw new AppError(404, 'Movimiento no encontrado');
+      return;
+    }
+    if (t.status !== 'PENDING') {
+      if (opts.strict) throw new AppError(409, 'El movimiento ya está registrado');
+      return;
+    }
+
+    const lockIds = t.movementType === 'TRANSFER' && t.destinationWalletId
+      ? [t.walletId, t.destinationWalletId].sort()
+      : [t.walletId];
+    for (const wid of lockIds) {
+      await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${wid} FOR UPDATE`;
+    }
+
+    const wallet = await tx.wallet.findUnique({ where: { id: t.walletId } });
+    if (!wallet || wallet.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Billetera no encontrada');
+
+    const amount = Number(t.amount);
+    let newBalance = Number(wallet.currentBalance);
+    if (t.movementType === 'INCOME') {
+      newBalance += amount;
+    } else if (t.movementType === 'EXPENSE') {
+      newBalance -= amount;
+    } else if (t.movementType === 'TRANSFER' && t.destinationWalletId) {
+      const dest = await tx.wallet.findUnique({ where: { id: t.destinationWalletId } });
+      if (!dest) throw new AppError(500, 'Billetera destino no encontrada');
+      await tx.wallet.update({
+        where: { id: t.destinationWalletId },
+        data: { currentBalance: Number(dest.currentBalance) + amount },
+      });
+      newBalance -= amount;
+    }
+
+    await tx.wallet.update({ where: { id: t.walletId }, data: { currentBalance: newBalance } });
+
+    const posted = await tx.transaction.update({
+      where: { id: transactionId },
+      data: {
+        status: 'POSTED',
+        // Posteo anticipado: si la plata ya salió, salió hoy. Sin esto quedaría un movimiento que
+        // afecta el saldo pero con fecha futura, y no entraría en los totales del mes en curso.
+        ...(opts.dateToNow ? { date: new Date() } : {}),
+      },
+    });
+
+    await tx.transactionHistory.create({
+      data: { transactionId, modifiedById: userId, action: 'POST', oldSnapshot: t as any, newSnapshot: posted as any },
+    });
+  });
+}
+
+/**
+ * "Ya se me descontó": postea un gasto/ingreso futuro AHORA, sin esperar a su fecha y sin que el
+ * usuario tenga que editarla. Aplica el saldo y estampa la fecha de hoy.
+ */
+export async function postTransactionNow(
+  transactionId: string,
+  ownerContext: OwnerContext,
+  userId: string,
+): Promise<void> {
+  await postOnePendingAtomically(transactionId, ownerContext, userId, { dateToNow: true, strict: true });
+}
+
+export async function postDuePendingTransactions(
+  ownerId: string,
+  userId: string,
+  ownerContext: OwnerContext,
+): Promise<void> {
+  const wallets = await prisma.wallet.findMany({ where: { ownerId }, select: { id: true } });
+  const walletIds = wallets.map((w) => w.id);
+  if (walletIds.length === 0) return;
+
+  const due = await prisma.transaction.findMany({
+    where: {
+      walletId: { in: walletIds },
+      status: 'PENDING',
+      deletedAt: null,
+      date: { lt: startOfTomorrow() },
+    },
+    select: { id: true },
+  });
+
+  // Un pendiente que falla no debe tumbar el listado del resto.
+  await Promise.allSettled(due.map((t) => postOnePendingAtomically(t.id, ownerContext, userId)));
+}
+
 export async function listTransactions(ownerId: string, filters?: ListTransactionFiltersInput, hasQueryParams = false) {
   const wallets = await prisma.wallet.findMany({ where: { ownerId }, select: { id: true } });
   const walletIds = wallets.map((w) => w.id);
@@ -108,6 +254,8 @@ export async function listTransactions(ownerId: string, filters?: ListTransactio
   const where: any = {
     walletId: { in: filters?.walletId ? [filters.walletId] : walletIds },
     deletedAt: null,
+    // Los gastos futuros (PENDING) no se mezclan con los movimientos reales: hay que pedirlos.
+    status: filters?.status ?? 'POSTED',
   };
   if (filters?.categoryId) where.categoryId = filters.categoryId;
   if (filters?.debtId) where.debtId = filters.debtId;
@@ -155,6 +303,48 @@ export async function updateTransaction(
     if (oldTx.movementType === 'ADJUSTMENT') {
       throw new AppError(409, 'Los ajustes de saldo no se pueden editar');
     }
+
+    // Un PENDING nunca aplicó saldo: editarlo solo cambia sus campos, sin deltas ni locks. Si la
+    // nueva fecha ya venció, el próximo barrido lo postea (caso "lo adelanté del 15 al 2").
+    if (oldTx.status === 'PENDING') {
+      if (input.categoryId) {
+        const cat = await tx.category.findUnique({ where: { id: input.categoryId } });
+        if (!cat || cat.ownerId !== ownerContext.ownerId) throw new AppError(404, 'Categoría no encontrada');
+      }
+
+      const pendingWalletId = input.walletId ?? oldTx.walletId;
+      const pendingDestId =
+        oldTx.movementType === 'TRANSFER' ? (input.destinationWalletId ?? oldTx.destinationWalletId) : null;
+
+      if (oldTx.movementType === 'TRANSFER' && pendingDestId === pendingWalletId) {
+        throw new AppError(400, 'La billetera origen y destino no pueden ser la misma');
+      }
+
+      const updatedPending = await tx.transaction.update({
+        where: { id: transactionId },
+        data: {
+          categoryId: input.categoryId ?? oldTx.categoryId,
+          amount: input.amount ?? oldTx.amount,
+          description: input.description ?? oldTx.description,
+          date: input.date ? new Date(input.date) : oldTx.date,
+          walletId: pendingWalletId,
+          destinationWalletId: pendingDestId,
+        },
+      });
+
+      await tx.transactionHistory.create({
+        data: {
+          transactionId,
+          modifiedById: userId,
+          action: 'UPDATE',
+          oldSnapshot: oldTx,
+          newSnapshot: updatedPending,
+        },
+      });
+
+      return updatedPending;
+    }
+
     const movementType = oldTx.movementType;
     const finalAmount = input.amount ?? Number(oldTx.amount);
     const finalWalletId = input.walletId ?? oldTx.walletId;
@@ -291,19 +481,22 @@ export async function deleteTransaction(
       await (tx as any).$queryRaw`SELECT id FROM Wallet WHERE id = ${transaction.destinationWalletId} FOR UPDATE`;
     }
 
-    const amount = Number(transaction.amount);
-    const wallet = await tx.wallet.findUnique({ where: { id: transaction.walletId } });
-    if (!wallet) throw new AppError(500, 'Billetera no encontrada');
+    // Un PENDING nunca aplicó saldo: no hay nada que revertir, solo se borra.
+    if (transaction.status !== 'PENDING') {
+      const amount = Number(transaction.amount);
+      const wallet = await tx.wallet.findUnique({ where: { id: transaction.walletId } });
+      if (!wallet) throw new AppError(500, 'Billetera no encontrada');
 
-    if (transaction.movementType === 'INCOME') {
-      await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) - amount } });
-    } else if (transaction.movementType === 'EXPENSE') {
-      await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) + amount } });
-    } else if (transaction.movementType === 'TRANSFER' && transaction.destinationWalletId) {
-      const destWallet = await tx.wallet.findUnique({ where: { id: transaction.destinationWalletId } });
-      if (!destWallet) throw new AppError(500, 'Billetera destino no encontrada');
-      await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) + amount } });
-      await tx.wallet.update({ where: { id: transaction.destinationWalletId }, data: { currentBalance: Number(destWallet.currentBalance) - amount } });
+      if (transaction.movementType === 'INCOME') {
+        await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) - amount } });
+      } else if (transaction.movementType === 'EXPENSE') {
+        await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) + amount } });
+      } else if (transaction.movementType === 'TRANSFER' && transaction.destinationWalletId) {
+        const destWallet = await tx.wallet.findUnique({ where: { id: transaction.destinationWalletId } });
+        if (!destWallet) throw new AppError(500, 'Billetera destino no encontrada');
+        await tx.wallet.update({ where: { id: transaction.walletId }, data: { currentBalance: Number(wallet.currentBalance) + amount } });
+        await tx.wallet.update({ where: { id: transaction.destinationWalletId }, data: { currentBalance: Number(destWallet.currentBalance) - amount } });
+      }
     }
 
     await tx.transactionHistory.create({

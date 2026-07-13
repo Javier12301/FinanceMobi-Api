@@ -18,6 +18,7 @@ import debtsRouter from './features/debts/debts.routes';
 import notificationsRouter from './features/notifications/notifications.routes';
 import insightsRouter from './features/insights/insights.routes';
 import accountingRouter from './features/accounting/accounting.routes';
+import savingsRouter from './features/savings/savings.routes';
 
 export const app = express();
 
@@ -94,5 +95,6 @@ app.use('/api/debts', debtsRouter);
 app.use('/api', notificationsRouter);
 app.use('/api/insights', insightsRouter);
 app.use('/api/accounting', accountingRouter);
+app.use('/api/savings-goals', savingsRouter);
 
 app.use(errorHandler);

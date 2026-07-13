@@ -42,6 +42,8 @@ export const listTransactionFiltersSchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   type: z.enum(['INCOME', 'EXPENSE', 'TRANSFER']).optional(),
+  // Gasto futuro: sin este filtro el listado devuelve solo POSTED (los PENDING alimentan "Próximos").
+  status: z.enum(['POSTED', 'PENDING']).optional(),
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().max(200).optional(),
 });

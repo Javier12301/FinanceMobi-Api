@@ -55,6 +55,42 @@ model User {
   notificationDevices      NotificationDevice[]
   notificationPreference   NotificationPreference?
   dailyCheckIns            UserDailyCheckIn[]
+  savingsGoals             SavingsGoal[]
+}
+
+// ──────────────────────────────────────────
+// Savings Goals (objetivos de ahorro)
+// ──────────────────────────────────────────
+
+/// Meta de ahorro tipo "sobre": NO mueve plata real ni toca billeteras/ledger.
+/// El progreso es la suma de sus aportes (SavingsContribution).
+model SavingsGoal {
+  id           String    @id @default(uuid())
+  ownerId      String
+  name         String
+  targetAmount Decimal   @db.Decimal(15, 2)
+  targetDate   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  owner         User                  @relation(fields: [ownerId], references: [id])
+  contributions SavingsContribution[]
+
+  @@index([ownerId])
+}
+
+/// Un aporte anotado por el usuario ("guardé $X para esta meta"). Fila individual (no un
+/// contador editable) para tener historial, deshacer, e idempotencia del replay offline.
+model SavingsContribution {
+  id        String   @id @default(uuid())
+  goalId    String
+  amount    Decimal  @db.Decimal(15, 2)
+  date      DateTime
+  createdAt DateTime @default(now())
+
+  goal SavingsGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
 }
 
 // Entrada diaria del usuario a la app: base de la racha real (un registro por día).
@@ -166,6 +202,7 @@ model Transaction {
   description         String?
   date                DateTime
   movementType        MovementType
+  status              String       @default("POSTED") // POSTED | PENDING (gasto futuro)
   debtId              String?
   recurringRuleId     String?
   deletedAt           DateTime?
@@ -179,6 +216,8 @@ model Transaction {
   recurringRule     RecurringRule?          @relation("RuleTransactions", fields: [recurringRuleId], references: [id])
   history           TransactionHistory[]
   attachments       TransactionAttachment[]
+
+  @@index([status, date])
 }
 
 model TransactionHistory {

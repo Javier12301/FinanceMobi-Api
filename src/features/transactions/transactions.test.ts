@@ -4,6 +4,8 @@ import {
   listTransactions,
   updateTransaction,
   deleteTransaction,
+  postDuePendingTransactions,
+  postTransactionNow,
 } from './transactions.service';
 import { AppError } from '../../core/errors';
 
@@ -686,6 +688,221 @@ describe('Transactions Service', () => {
       await expect(
         updateTransaction('tx-1', { description: 'new' }, 'user-1', { ownerId: 'owner-1', role: 'OWNER' }),
       ).rejects.toMatchObject({ statusCode: 404 });
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  // Gasto futuro: fecha de día futuro => PENDING, no toca saldo hasta que se postea.
+  describe('gasto futuro (PENDING)', () => {
+    const daysFromNow = (n: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + n);
+      return d;
+    };
+
+    it('crea con fecha futura como PENDING sin tocar el saldo', async () => {
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockWalletFindUnique.mockResolvedValue({ id: 'wallet-1', ownerId: 'owner-1', currentBalance: '100.00' });
+      mockCategoryFindUnique.mockResolvedValue({ id: 'cat-1', ownerId: 'owner-1' });
+      mockTransactionCreate.mockImplementation(async (args: any) => ({ id: 'tx-1', ...args.data }));
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      const result: any = await createTransaction(
+        {
+          walletId: 'wallet-1',
+          categoryId: 'cat-1',
+          amount: 200,
+          movementType: 'EXPENSE',
+          date: daysFromNow(5).toISOString(),
+        },
+        { ownerId: 'owner-1', role: 'OWNER' },
+        'user-1',
+      );
+
+      expect(result.status).toBe('PENDING');
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+    });
+
+    it('crea con fecha de hoy como POSTED y sí toca el saldo', async () => {
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockWalletFindUnique.mockResolvedValue({ id: 'wallet-1', ownerId: 'owner-1', currentBalance: '100.00' });
+      mockCategoryFindUnique.mockResolvedValue({ id: 'cat-1', ownerId: 'owner-1' });
+      mockWalletUpdate.mockResolvedValue({});
+      mockTransactionCreate.mockImplementation(async (args: any) => ({ id: 'tx-1', ...args.data }));
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      await createTransaction(
+        { walletId: 'wallet-1', categoryId: 'cat-1', amount: 20, movementType: 'EXPENSE', date: new Date().toISOString() },
+        { ownerId: 'owner-1', role: 'OWNER' },
+        'user-1',
+      );
+
+      expect(mockWalletUpdate).toHaveBeenCalled();
+    });
+
+    it('postea un pendiente vencido: muta saldo y pasa a POSTED', async () => {
+      mockWalletFindMany.mockResolvedValue([{ id: 'wallet-1' }]);
+      mockTransactionFindMany.mockResolvedValue([{ id: 'tx-1' }]);
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockTransactionFindUnique.mockResolvedValue({
+        id: 'tx-1',
+        walletId: 'wallet-1',
+        destinationWalletId: null,
+        amount: '200.00',
+        movementType: 'EXPENSE',
+        status: 'PENDING',
+        deletedAt: null,
+      });
+      mockWalletFindUnique.mockResolvedValue({ id: 'wallet-1', ownerId: 'owner-1', currentBalance: '1000.00' });
+      mockWalletUpdate.mockResolvedValue({});
+      mockTransactionUpdate.mockResolvedValue({ id: 'tx-1', status: 'POSTED' });
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      await postDuePendingTransactions('owner-1', 'user-1', { ownerId: 'owner-1', role: 'OWNER' });
+
+      expect(mockWalletUpdate.mock.calls[0][0].data.currentBalance).toBe(800);
+      expect(mockTransactionUpdate.mock.calls[0][0].data.status).toBe('POSTED');
+    });
+
+    it('no re-postea un pendiente que ya fue posteado por otra request', async () => {
+      mockWalletFindMany.mockResolvedValue([{ id: 'wallet-1' }]);
+      mockTransactionFindMany.mockResolvedValue([{ id: 'tx-1' }]);
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      // Bajo el lock ya figura POSTED => no debe tocar nada.
+      mockTransactionFindUnique.mockResolvedValue({
+        id: 'tx-1',
+        walletId: 'wallet-1',
+        amount: '200.00',
+        movementType: 'EXPENSE',
+        status: 'POSTED',
+        deletedAt: null,
+      });
+
+      await postDuePendingTransactions('owner-1', 'user-1', { ownerId: 'owner-1', role: 'OWNER' });
+
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    });
+
+    it('el listado por default excluye PENDING', async () => {
+      mockWalletFindMany.mockResolvedValue([{ id: 'wallet-1' }]);
+      mockTransactionFindMany.mockResolvedValue([]);
+
+      await listTransactions('owner-1', {}, false);
+
+      expect(mockTransactionFindMany.mock.calls[0][0].where).toMatchObject({ status: 'POSTED' });
+    });
+
+    it('el listado con status=PENDING trae solo los pendientes', async () => {
+      mockWalletFindMany.mockResolvedValue([{ id: 'wallet-1' }]);
+      mockTransactionFindMany.mockResolvedValue([]);
+
+      await listTransactions('owner-1', { status: 'PENDING' }, false);
+
+      expect(mockTransactionFindMany.mock.calls[0][0].where).toMatchObject({ status: 'PENDING' });
+    });
+
+    it('editar un movimiento PENDING no muta el saldo', async () => {
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockTransactionFindFirst.mockResolvedValue({
+        id: 'tx-1',
+        walletId: 'wallet-1',
+        destinationWalletId: null,
+        categoryId: 'cat-1',
+        amount: '200.00',
+        description: 'x',
+        date: daysFromNow(10),
+        movementType: 'EXPENSE',
+        status: 'PENDING',
+      });
+      mockTransactionUpdate.mockResolvedValue({ id: 'tx-1', status: 'PENDING' });
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      // El usuario adelanta la fecha del gasto futuro (15-ene => 2-ene del ejemplo) y cambia el monto.
+      // El monto distinto haría mutar el saldo en el camino POSTED: si no se muta, la rama PENDING funciona.
+      await updateTransaction('tx-1', { date: daysFromNow(2).toISOString(), amount: 300 }, 'user-1', {
+        ownerId: 'owner-1',
+        role: 'OWNER',
+      });
+
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+      expect(mockTransactionUpdate.mock.calls[0][0].data.amount).toBe(300);
+    });
+
+    // "Ya se me descontó": el usuario postea un futuro sin tener que editarle la fecha.
+    it('postTransactionNow postea un PENDING al instante, con fecha de hoy', async () => {
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockTransactionFindUnique.mockResolvedValue({
+        id: 'tx-1',
+        walletId: 'wallet-1',
+        destinationWalletId: null,
+        amount: '5000.00',
+        movementType: 'EXPENSE',
+        status: 'PENDING',
+        deletedAt: null,
+        date: daysFromNow(20), // sigue faltando un montón: igual se postea
+      });
+      mockWalletFindUnique.mockResolvedValue({ id: 'wallet-1', ownerId: 'owner-1', currentBalance: '8000.00' });
+      mockWalletUpdate.mockResolvedValue({});
+      mockTransactionUpdate.mockResolvedValue({ id: 'tx-1', status: 'POSTED' });
+      mockTransactionHistoryCreate.mockResolvedValue({});
+
+      await postTransactionNow('tx-1', { ownerId: 'owner-1', role: 'OWNER' }, 'user-1');
+
+      // Descontó el saldo aunque la fecha siga siendo futura...
+      expect(mockWalletUpdate.mock.calls[0][0].data.currentBalance).toBe(3000);
+      const patch = mockTransactionUpdate.mock.calls[0][0].data;
+      expect(patch.status).toBe('POSTED');
+      // ...y le pisó la fecha a hoy: si la plata ya salió, salió hoy.
+      const today = new Date().toISOString().slice(0, 10);
+      expect(new Date(patch.date).toISOString().slice(0, 10)).toBe(today);
+    });
+
+    it('postTransactionNow rechaza un movimiento que ya está POSTED (409)', async () => {
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockTransactionFindUnique.mockResolvedValue({
+        id: 'tx-1',
+        walletId: 'wallet-1',
+        amount: '5000.00',
+        movementType: 'EXPENSE',
+        status: 'POSTED',
+        deletedAt: null,
+      });
+
+      await expect(
+        postTransactionNow('tx-1', { ownerId: 'owner-1', role: 'OWNER' }, 'user-1'),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(mockWalletUpdate).not.toHaveBeenCalled();
+    });
+
+    it('borrar un movimiento PENDING no revierte saldo', async () => {
+      mockPrismaTransaction.mockImplementation(async (fn: Function) => fn(prisma));
+      mockQueryRaw.mockResolvedValue(undefined);
+      mockTransactionFindFirst.mockResolvedValue({
+        id: 'tx-1',
+        walletId: 'wallet-1',
+        destinationWalletId: null,
+        amount: '200.00',
+        movementType: 'EXPENSE',
+        status: 'PENDING',
+        wallet: { id: 'wallet-1', ownerId: 'owner-1', currentBalance: '1000.00' },
+        attachments: [],
+        destinationWallet: null,
+      });
+      mockTransactionHistoryCreate.mockResolvedValue({});
+      mockTransactionUpdate.mockResolvedValue({});
+      mockTransactionAttachmentDeleteMany.mockResolvedValue({});
+      mockUserFindUnique.mockResolvedValue(null);
+
+      await deleteTransaction('tx-1', { ownerId: 'owner-1', role: 'OWNER' }, 'user-1');
+
       expect(mockWalletUpdate).not.toHaveBeenCalled();
     });
   });

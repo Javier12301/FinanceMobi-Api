@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { adjustWalletBalance as svcAdjustBalance, createWallet as svcCreate, listWallets as svcList, updateWallet as svcUpdate, deleteWallet as svcDelete } from './wallets.service';
 import type { AdjustWalletBalanceInput, CreateWalletInput, UpdateWalletInput } from './wallets.schema';
+import { postDuePendingTransactions } from '../transactions/transactions.service';
 
 export async function createWallet(req: Request, res: Response, next: NextFunction) {
   try {
@@ -11,6 +12,9 @@ export async function createWallet(req: Request, res: Response, next: NextFuncti
 
 export async function listWallets(req: Request, res: Response, next: NextFunction) {
   try {
+    // Los gastos futuros vencidos se postean antes de devolver saldos, así el balance nunca
+    // queda viejo si el cliente pide billeteras antes que transacciones. Es idempotente.
+    await postDuePendingTransactions(req.ownerContext!.ownerId, req.user!.sub, req.ownerContext!);
     res.json(await svcList(req.ownerContext!.ownerId));
   } catch (err) { next(err); }
 }

@@ -8,6 +8,7 @@ import {
   listTransactionsHandler,
   updateTransactionHandler,
   deleteTransactionHandler,
+  postTransactionNowHandler,
 } from './transactions.controller';
 import { createTransactionSchema, updateTransactionSchema, listTransactionFiltersSchema } from './transactions.schema';
 
@@ -31,6 +32,15 @@ router.put(
   requireRole('OWNER', 'SUPERVISOR'),
   validate(updateTransactionSchema),
   updateTransactionHandler,
+);
+
+// "Ya se me descontó": postear un gasto/ingreso futuro sin esperar a su fecha.
+router.post(
+  '/:transactionId/post',
+  authMiddleware,
+  requireOwnerContext,
+  requireRole('OWNER', 'SUPERVISOR'),
+  postTransactionNowHandler,
 );
 
 router.delete(
